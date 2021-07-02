@@ -1,5 +1,5 @@
 use indoc::{formatdoc, indoc};
-use migration_core::rpc_api;
+use migration_core::{migration_api, rpc_api};
 use migration_engine_tests::sync_test_api::*;
 use pretty_assertions::assert_eq;
 use quaint::prelude::Insert;
@@ -423,4 +423,56 @@ async fn connection_string_problems_give_a_nice_error() {
 
         assert_eq!(expected, json_error);
     }
+}
+
+#[test_connector(tags(Postgres))]
+fn tls_errors_must_be_mapped_in_the_cli(api: TestApi) {
+    let schema = format!(
+        r#"
+        datasource pg {{
+            provider = "postgres"
+            url = "{}&sslmode=require&sslaccept=strict"
+        }}
+        "#,
+        api.connection_string()
+    );
+
+    let expectation = expect![[]];
+
+    expectation.assert_eq(&initialization_error(&api, &schema));
+
+    // assert_eq!(error.error_code(), Some("P1011"));
+    // assert_eq!(
+    //     error.to_string(),
+    //     "Error opening a TLS connection: error performing TLS handshake: server does not support TLS\n"
+    // );
+}
+
+#[test_connector(tags(Postgres))]
+fn bad_postgres_url_must_return_a_good_error(api: TestApi) {
+    let schema = r#"
+        datasource db {
+            provider = "postgres"
+            url = "postgresql://postgres:prisma@localhost:543`/mydb?schema=public"
+        }
+    "#;
+
+    let err = api.block_on(migration_core::create_database(&schema)).unwrap_err();
+    let json = serde_json::to_string_pretty(&err.to_user_facing()).unwrap();
+
+    let expectation = expect![[]];
+
+    expectation.assert_eq(&json);
+
+    // let error = api.get_cli_error(&["migration-engine", "cli", "--datasource", url, "create-database"]);
+
+    // assert_eq!(
+    //     error.to_string(),
+    //     "Error parsing connection string: invalid port number in database URL\n"
+    // );
+}
+
+fn initialization_error(api: &TestApi, schema: &str) -> String {
+    let reply = api.block_on(migration_api(schema)).map(drop).unwrap_err();
+    serde_json::to_string_pretty(&reply.to_user_facing()).unwrap()
 }

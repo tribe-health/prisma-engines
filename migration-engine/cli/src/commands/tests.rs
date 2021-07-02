@@ -1,5 +1,4 @@
 use migration_connector::ConnectorError;
-use structopt::StructOpt;
 use test_macros::test_connector;
 use test_setup::{sqlite_test_url, BitFlags, Tags, TestApiArgs};
 use url::Url;
@@ -181,34 +180,4 @@ fn database_already_exists_must_return_a_proper_error(api: TestApi) {
 
     assert_eq!(error.error_code(), Some("P1009"));
     assert_eq!(error.to_string(), format!("Database `database_already_exists_must_return_a_proper_error` already exists on the database server at `{host}:{port}`\n", host = host, port = port));
-}
-
-#[test_connector(tags(Postgres))]
-fn bad_postgres_url_must_return_a_good_error(api: TestApi) {
-    let url = "postgresql://postgres:prisma@localhost:543`/mydb?schema=public";
-
-    let error = api.get_cli_error(&["migration-engine", "cli", "--datasource", url, "create-database"]);
-
-    assert_eq!(
-        error.to_string(),
-        "Error parsing connection string: invalid port number in database URL\n"
-    );
-}
-
-#[test_connector(tags(Postgres))]
-fn tls_errors_must_be_mapped_in_the_cli(api: TestApi) {
-    let url = format!("{}&sslmode=require&sslaccept=strict", api.connection_string);
-    let error = api.get_cli_error(&[
-        "migration-engine",
-        "cli",
-        "--datasource",
-        &url,
-        "can-connect-to-database",
-    ]);
-
-    assert_eq!(error.error_code(), Some("P1011"));
-    assert_eq!(
-        error.to_string(),
-        "Error opening a TLS connection: error performing TLS handshake: server does not support TLS\n"
-    );
 }

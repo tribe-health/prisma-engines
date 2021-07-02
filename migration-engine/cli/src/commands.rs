@@ -5,58 +5,57 @@ use crate::logger::log_error_and_exit;
 use enumflags2::BitFlags;
 use migration_connector::ConnectorError;
 use migration_core::{migration_api, qe_setup::QueryEngineFlags};
-use structopt::StructOpt;
 use user_facing_errors::common::{InvalidConnectionString, SchemaParserError};
 
-#[derive(Debug, StructOpt)]
-pub(crate) struct Cli {
-    /// The connection string to the database
-    #[structopt(long, short = "d", parse(try_from_str = parse_base64_string))]
-    datasource: String,
-    #[structopt(long, short = "f", parse(try_from_str = parse_setup_flags))]
-    qe_test_setup_flags: Option<BitFlags<QueryEngineFlags>>,
-    #[structopt(subcommand)]
-    command: CliCommand,
-}
+// #[derive(Debug, StructOpt)]
+// pub(crate) struct Cli {
+//     /// The connection string to the database
+//     #[structopt(long, short = "d", parse(try_from_str = parse_base64_string))]
+//     datasource: String,
+//     #[structopt(long, short = "f", parse(try_from_str = parse_setup_flags))]
+//     qe_test_setup_flags: Option<BitFlags<QueryEngineFlags>>,
+//     #[structopt(subcommand)]
+//     command: CliCommand,
+// }
 
-impl Cli {
-    pub(crate) async fn run(self) {
-        match self.run_inner().await {
-            Ok(msg) => {
-                tracing::info!("{}", msg);
-            }
-            Err(error) => log_error_and_exit(error),
-        }
-    }
+// impl Cli {
+//     pub(crate) async fn run(self) {
+//         match self.run_inner().await {
+//             Ok(msg) => {
+//                 tracing::info!("{}", msg);
+//             }
+//             Err(error) => log_error_and_exit(error),
+//         }
+//     }
 
-    pub(crate) async fn run_inner(self) -> Result<String, ConnectorError> {
-        match self.command {
-            CliCommand::CreateDatabase => create_database(&self.datasource).await,
-            CliCommand::CanConnectToDatabase => connect_to_database(&self.datasource).await,
-            CliCommand::DropDatabase => drop_database(&self.datasource).await,
-            CliCommand::QeSetup => {
-                qe_setup(
-                    &self.datasource,
-                    self.qe_test_setup_flags.unwrap_or_else(BitFlags::empty),
-                )
-                .await?;
-                Ok(String::new())
-            }
-        }
-    }
-}
+//     pub(crate) async fn run_inner(self) -> Result<String, ConnectorError> {
+//         match self.command {
+//             CliCommand::CreateDatabase => create_database(&self.datasource).await,
+//             CliCommand::CanConnectToDatabase => connect_to_database(&self.datasource).await,
+//             CliCommand::DropDatabase => drop_database(&self.datasource).await,
+//             CliCommand::QeSetup => {
+//                 qe_setup(
+//                     &self.datasource,
+//                     self.qe_test_setup_flags.unwrap_or_else(BitFlags::empty),
+//                 )
+//                 .await?;
+//                 Ok(String::new())
+//             }
+//         }
+//     }
+// }
 
-#[derive(Debug, StructOpt)]
-enum CliCommand {
-    /// Create an empty database defined in the configuration string.
-    CreateDatabase,
-    /// Does the database connection string work?
-    CanConnectToDatabase,
-    /// Drop the database.
-    DropDatabase,
-    /// Set up the database for connector-test-kit.
-    QeSetup,
-}
+// #[derive(Debug, StructOpt)]
+// enum CliCommand {
+//     /// Create an empty database defined in the configuration string.
+//     CreateDatabase,
+//     /// Does the database connection string work?
+//     CanConnectToDatabase,
+//     /// Drop the database.
+//     DropDatabase,
+//     /// Set up the database for connector-test-kit.
+//     QeSetup,
+// }
 
 fn parse_base64_string(s: &str) -> Result<String, ConnectorError> {
     match base64::decode(s) {
