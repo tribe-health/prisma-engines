@@ -1,5 +1,6 @@
 mod autoincrement;
 mod native_types;
+mod relation;
 
 use crate::{
     ast::{self, WithName},
@@ -43,7 +44,7 @@ pub(super) fn resolve_model_and_field_attributes<'ast>(
 
             ctx.db.types.scalar_fields.insert((model_id, field_id), scalar_field);
         } else if let Some(mut rf) = ctx.db.types.take_relation_field(model_id, field_id) {
-            visit_relation_field_attributes(model_id, ast_field, &mut rf, ctx);
+            visit_relation_field_attributes(model_id, field_id, ast_field, &mut rf, ctx);
             ctx.db.types.relation_fields.insert((model_id, field_id), rf);
         } else {
             unreachable!(
@@ -274,6 +275,7 @@ fn visit_scalar_field_attributes<'ast>(
 
 fn visit_relation_field_attributes<'ast>(
     model_id: ast::ModelId,
+    field_id: ast::FieldId,
     ast_field: &'ast ast::Field,
     relation_field: &mut RelationField<'ast>,
     ctx: &mut Context<'ast>,
@@ -282,7 +284,7 @@ fn visit_relation_field_attributes<'ast>(
         // @relation
         // Relation attributes are not required _yet_ at this stage. The schema has to be parseable for standardization.
         attributes.visit_optional_single("relation", ctx, |relation_args, ctx| {
-            visit_relation(relation_args, model_id, relation_field, ctx)
+            visit_relation(relation_args, model_id, field_id, relation_field, ctx)
         });
 
         // @id
@@ -660,9 +662,11 @@ pub(super) fn visit_map<'ast>(map_args: &mut Arguments<'ast>, ctx: &mut Context<
 fn visit_relation<'ast>(
     relation_args: &mut Arguments<'ast>,
     model_id: ast::ModelId,
+    field_id: ast::FieldId,
     relation_field: &mut RelationField<'ast>,
     ctx: &mut Context<'ast>,
 ) {
+    // `fields` argument
     if let Some(fields) = relation_args.optional_arg("fields") {
         let fields = match resolve_field_array(&fields, relation_args.span(), model_id, ctx) {
             Ok(fields) => fields,
@@ -686,6 +690,9 @@ fn visit_relation<'ast>(
         relation_field.fields = Some(fields);
     }
 
+    relation::validate_relation_field_arity(model_id, field_id, relation_field, ctx);
+
+    // `references` argument
     if let Some(references) = relation_args.optional_arg("references") {
         let references = match resolve_field_array(
             &references,
@@ -737,7 +744,6 @@ fn visit_relation<'ast>(
     }
 
     // Validate referential actions.
-
     if let Some(on_delete) = relation_args.optional_arg("onDelete") {
         match on_delete.as_referential_action() {
             Ok(action) => {
