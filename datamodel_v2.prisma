@@ -1,115 +1,68 @@
-datasource chinook {
-  provider = "sqlite"
-  url      = "file:./db/Chinook.db?connection_limit=5&socket_timeout=20"
+datasource cordico {
+  provider = "postgresql"
+  url      = "postgresql://cordico:cordico@127.0.0.1:5435/cordico?schema=public"
 }
 
-generator js {
+generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["microsoftSqlServer", "mongodb", "orderByRelation", "napi", "selectRelationCount", "orderByAggregateGroup", "interactiveTransactions"]
+  previewFeatures = ["orderByRelation", "nApi", "selectRelationCount", "orderByAggregateGroup", "filterJson", "planetScaleMode", "referentialActions"]
 }
 
-model Album {
-  id       Int     @id @map("AlbumId")
-  Title    String  @default("TestDefaultTitle")
-  ArtistId Int
-  Tracks   Track[]
-  Artist   Artist  @relation(fields: [ArtistId], references: [id])
+model AssetType {
+  id         String  @id @default(uuid())
+  name          String  @unique
+  description        String?
+  schema        Json
+  mime_types   String[]
+  version      Int @default(1)
+  created      DateTime @default(now())
+  creator_id   String
+  updated      DateTime?
+  updater_id   String?
+  assets   Asset[]
+
+  @@map(name: "asset_types")
 }
 
-model Track {
-  id           Int           @id @map("TrackId")
-  Name         String
-  Composer     String?
-  Milliseconds Int
-  UnitPrice    Float
-  AlbumId      Int?
-  GenreId      Int?
-  MediaTypeId  Int
-  MediaType    MediaType     @relation(fields: [MediaTypeId], references: [id])
-  Genre        Genre?        @relation(fields: [GenreId], references: [id])
-  Album        Album?        @relation(fields: [AlbumId], references: [id])
-  InvoiceLines InvoiceLine[]
+model Asset {
+  id         String  @id @default(uuid())
+  name          String  @unique
+  asset_type_id  String
+  asset_type  AssetType @relation(fields: [asset_type_id], references: [id])
+  data       Json
+  ipfs_hash   String
+  version      Int @default(1)
+  created      DateTime @default(now())
+  creator_id   String
+  updated      DateTime?
+  updater_id   String?
+
+  @@map(name: "assets")
 }
 
-model MediaType {
-  id    Int     @id @map("MediaTypeId")
-  Name  String?
-  Track Track[]
+model User {
+  id    String @id @default(uuid())
+  identifier String
+  data     Json?
+  roles    UserRole[]
+
+  @@map(name: "users")
 }
 
-model Genre {
-  id     Int     @id @map("GenreId")
-  Name   String?
-  Tracks Track[]
+model UserRole {
+   id    String @id @default(uuid())
+   user_id String
+   user  User @relation(fields: [user_id], references: [id])
+   role_id String
+   role Role @relation(fields: [role_id], references: [id])
+
+   @@map(name: "user_roles")
 }
 
-model Artist {
-  id     Int     @id @map("ArtistId")
-  Name   String?
-  Albums Album[]
-}
+model Role {
+  id    String @id @default(uuid())
+  name String
+  users  UserRole[]
 
-model Customer {
-  id           Int       @id @map("CustomerId")
-  FirstName    String
-  LastName     String
-  Company      String?
-  Address      String?
-  City         String?
-  State        String?
-  Country      String?
-  PostalCode   String?
-  Phone        String?
-  Fax          String?
-  Email        String
-  SupportRepId Int?
-  SupportRep   Employee? @relation(fields: [SupportRepId], references: [id])
-  Invoices     Invoice[]
-}
-
-model Employee {
-  id         Int        @id @map("EmployeeId")
-  FirstName  String
-  LastName   String
-  Title      String?
-  BirthDate  DateTime?
-  HireDate   DateTime?
-  Address    String?
-  City       String?
-  State      String?
-  Country    String?
-  PostalCode String?
-  Phone      String?
-  Fax        String?
-  Email      String?
-  Customers  Customer[]
-}
-
-model Invoice {
-  id                Int           @id @map("InvoiceId")
-  InvoiceDate       DateTime
-  BillingAddress    String?
-  BillingCity       String?
-  BillingState      String?
-  BillingCountry    String?
-  BillingPostalCode String?
-  Total             Float
-  CustomerId        Int
-  Customer          Customer      @relation(fields: [CustomerId], references: [id])
-  Lines             InvoiceLine[]
-}
-
-model InvoiceLine {
-  id        Int     @id @map("InvoiceLineId")
-  UnitPrice Float
-  Quantity  Int
-  InvoiceId Int
-  TrackId   Int
-  Invoice   Invoice @relation(fields: [InvoiceId], references: [id])
-  Track     Track   @relation(fields: [TrackId], references: [id])
-}
-
-model Playlist {
-  id   Int     @id @map("PlaylistId")
-  Name String?
+  @@map(name: "roles")
 }
