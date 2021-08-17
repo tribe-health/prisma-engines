@@ -215,6 +215,78 @@ mod many_count_rel {
         Ok(())
     }
 
+    fn m_n_self_rel() -> String {
+        let schema = indoc! {
+            r#"model User {
+              #id(id, Int, @id, @default(autoincrement()))
+              name String
+              #m2m(followers, User[], Int, followers)
+              #m2m(following, User[], Int, followers)
+            }"#
+        };
+
+        schema.to_owned()
+    }
+
+    // Regression test for https://github.com/prisma/prisma/issues/7807
+    #[connector_test(schema(m_n_self_rel))]
+    async fn count_m_n_self_rel(runner: Runner) -> TestResult<()> {
+        run_query!(
+            runner,
+            r#"mutation {
+          createOneUser(data: {
+            name: "Alice"
+            followers: { create: { name: "Bob"}},
+            following: { create: { name: "Justin"}},
+          }) {
+            id
+          }
+        }"#
+        );
+
+        insta::assert_snapshot!(
+          run_query!(&runner, r#"query {
+            findManyUser(orderBy: { name: asc }) {
+              name
+              following {
+                name
+              }
+              followers {
+                name
+              }
+              _count {
+                following
+                followers
+              }
+            }
+          }
+          "#),
+          @r###"{"data":{"findManyUser":[{"name":"Alice","following":[{"name":"Justin"}],"followers":[{"name":"Bob"}],"_count":{"following":1,"followers":1}},{"name":"Bob","following":[{"name":"Alice"}],"followers":[],"_count":{"following":1,"followers":0}},{"name":"Justin","following":[],"followers":[{"name":"Alice"}],"_count":{"following":0,"followers":1}}]}}"###
+        );
+
+        insta::assert_snapshot!(
+          run_query!(&runner, r#"query {
+            findUniqueUser(where: { id: 1 }) {
+              name
+              following {
+                name
+              }
+              followers {
+                name
+              }
+              _count {
+                following
+                followers
+              }
+            }
+          }
+          "#),
+          @r###"{"data":{"findUniqueUser":{"name":"Alice","following":[{"name":"Justin"}],"followers":[{"name":"Bob"}],"_count":{"following":1,"followers":1}}}}"###
+        );
+
+        Ok(())
+    }
+
     fn schema_inmemory_process() -> String {
         let schema = indoc! {
             r#"model Post {
@@ -258,6 +330,81 @@ mod many_count_rel {
             }
           } }"#),
           @r###"{"data":{"findManyPost":[{"id":3,"_count":{"comments":0}},{"id":2,"_count":{"comments":4}},{"id":1,"_count":{"comments":2}}]}}"###
+        );
+
+        Ok(())
+    }
+
+    fn schema_one2m_multi_fks() -> String {
+        let schema = indoc! {
+            r#"model User {
+              #id(id, Int, @id, @default(autoincrement()))
+              votes           Vote[]
+              UserToObjective UserToObjective[]
+            }
+            
+            model Objective {
+              #id(id, Int, @default(autoincrement()), @id)
+              name            String            @unique
+              UserToObjective UserToObjective[] @relation(name: "UserObjectives")
+            }
+            
+            model UserToObjective {
+              user        User      @relation(fields: [userId], references: [id])
+              userId      Int
+              objective   Objective @relation(name: "UserObjectives", fields: [objectiveId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+              objectiveId Int
+              votes       Vote[]
+            
+              @@id([userId, objectiveId])
+            }
+            
+            model Vote {
+              createdAt     DateTime        @default(now())
+              user          User            @relation(fields: [userId], references: [id])
+              userId        Int
+              userObjective UserToObjective @relation(fields: [objectiveId, followerId], references: [userId, objectiveId], onDelete: NoAction, onUpdate: NoAction)
+              objectiveId   Int
+              followerId    Int
+            
+              @@id([userId, objectiveId])
+            }"#
+        };
+
+        schema.to_owned()
+    }
+
+    // Regression test for: https://github.com/prisma/prisma/issues/7299
+    #[connector_test(schema(schema_one2m_multi_fks))]
+    async fn count_one2m_multi_fks(runner: Runner) -> TestResult<()> {
+        run_query!(
+            runner,
+            r#"mutation {
+                createOneUserToObjective(
+                  data: {
+                    user: { create: {} }
+                    objective: { create: { name: "Objective 1" } }
+                    votes: { create: [{ user: { create: {} } }, { user: { create: {} } }] }
+                  }
+                ) {
+                  userId
+                  _count {
+                    votes
+                  }
+                }
+              }
+            "#
+        );
+
+        insta::assert_snapshot!(
+          run_query!(&runner, r#"query {
+            findManyUserToObjective {
+              _count {
+                votes
+              }
+            }
+          }"#),
+          @r###"{"data":{"findManyUserToObjective":[{"_count":{"votes":2}}]}}"###
         );
 
         Ok(())
