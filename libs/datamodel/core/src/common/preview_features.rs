@@ -58,6 +58,7 @@ features!(
     ReferentialActions,
     InteractiveTransactions,
     NamedConstraints,
+    FullTextSearch
 );
 
 // Mapping of which active, deprecated and hidden
@@ -67,7 +68,6 @@ features!(
 pub static GENERATOR: Lazy<FeatureMap> = Lazy::new(|| {
     FeatureMap::default()
         .with_active(vec![
-            MicrosoftSqlServer,
             OrderByRelation,
             NApi,
             SelectRelationCount,
@@ -78,6 +78,7 @@ pub static GENERATOR: Lazy<FeatureMap> = Lazy::new(|| {
             MongoDb,
             InteractiveTransactions,
             NamedConstraints,
+            FullTextSearch,
         ])
         .with_deprecated(vec![
             AtomicNumberOperations,
@@ -90,6 +91,7 @@ pub static GENERATOR: Lazy<FeatureMap> = Lazy::new(|| {
             UncheckedScalarInputs,
             GroupBy,
             CreateMany,
+            MicrosoftSqlServer,
         ])
 });
 

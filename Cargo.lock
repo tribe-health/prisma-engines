@@ -945,7 +945,6 @@ version = "0.1.0"
 dependencies = [
  "dml",
  "enumflags2",
- "itertools 0.10.0",
  "serde_json",
  "thiserror",
  "url",
@@ -1813,6 +1812,7 @@ dependencies = [
  "datamodel",
  "datamodel-connector",
  "enumflags2",
+ "expect-test",
  "indoc",
  "introspection-connector",
  "introspection-core",
@@ -2319,7 +2319,6 @@ dependencies = [
  "datamodel-connector",
  "dml",
  "enumflags2",
- "lazy_static",
  "native-types",
  "once_cell",
  "serde_json",
@@ -3215,7 +3214,7 @@ dependencies = [
 [[package]]
 name = "quaint"
 version = "0.2.0-alpha.13"
-source = "git+https://github.com/prisma/quaint#4558687180140b610b78e66c57e2fbd7c8ea0e7f"
+source = "git+https://github.com/prisma/quaint#d897d94617f37bede2f9e53d56d4a6df7c3a0e00"
 dependencies = [
  "async-trait",
  "base64 0.12.3",
@@ -4484,9 +4483,9 @@ dependencies = [
 
 [[package]]
 name = "tiberius"
-version = "0.6.0"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8916df01764918a5e238fc69a2d5e1b55c93e35c7efc1e85762f64a086f1a4eb"
+checksum = "30671a5510b5ff1c91b6d3034a6675bf78c145e1b87f4523a94340b3945628a0"
 dependencies = [
  "async-native-tls",
  "async-stream 0.2.1",

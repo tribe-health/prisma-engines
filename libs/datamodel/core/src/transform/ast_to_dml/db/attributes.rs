@@ -1,5 +1,6 @@
 mod autoincrement;
 mod native_types;
+mod relation;
 
 use super::{
     context::{Arguments, Context},
@@ -72,7 +73,7 @@ pub(super) fn resolve_model_and_field_attributes<'ast>(
 
     for (field_id, ast_field) in ast_model.iter_fields() {
         if let Some(mut rf) = ctx.db.types.take_relation_field(model_id, field_id) {
-            visit_relation_field_attributes(model_id, ast_field, &model_data, &mut rf, ctx);
+            visit_relation_field_attributes(model_id, field_id, ast_field, &model_data, &mut rf, ctx);
             ctx.db.types.relation_fields.insert((model_id, field_id), rf);
         } else if !seen_scalars.contains(&(model_id, field_id)) {
             unreachable!(
@@ -234,7 +235,7 @@ fn visit_scalar_field_attributes<'ast>(
                 )),
                 None => {
                     let db_name = if ctx.db.preview_features.contains(NamedConstraints) {
-                        primary_key_constraint_name(&ast_model, model_data, args,  "@id", ctx)
+                        primary_key_constraint_name(ast_model, model_data, args,  "@id", ctx)
                     } else {
                         ctx.is_sql_server().then(|| {
                             Cow::from(format!(
@@ -299,7 +300,7 @@ fn visit_scalar_field_attributes<'ast>(
 
                  let generated_name = ConstraintNames::index_name(model_db_name, &[field_db_name], IndexType::Unique, ctx.db.active_connector());
                  let db_name = get_map_argument(args,  generated_name,ctx);
-                 validate_db_name(&ast_model, args, &db_name, "@unique", ctx);
+                 validate_db_name(ast_model, args, &db_name, "@unique", ctx);
 
                  db_name
 
@@ -344,7 +345,7 @@ fn primary_key_constraint_name<'ast>(
         None => None,
     };
 
-    validate_db_name(&ast_model, args, &db_name, attribute, ctx);
+    validate_db_name(ast_model, args, &db_name, attribute, ctx);
 
     if db_name.is_some() && !ctx.db.active_connector().supports_named_primary_keys() {
         ctx.push_error(DatamodelError::new_model_validation_error(
@@ -383,7 +384,7 @@ fn default_value_constraint_name<'ast>(
         None => None,
     };
 
-    validate_db_name(&ast_model, args, &db_name, "@default", ctx);
+    validate_db_name(ast_model, args, &db_name, "@default", ctx);
 
     if db_name.is_some() && !ctx.db.active_connector().supports_named_default_values() {
         ctx.push_error(args.new_attribute_validation_error(
@@ -396,6 +397,7 @@ fn default_value_constraint_name<'ast>(
 
 fn visit_relation_field_attributes<'ast>(
     model_id: ast::ModelId,
+    field_id: ast::FieldId,
     ast_field: &'ast ast::Field,
     model_data: &ModelData<'ast>,
     relation_field: &mut RelationField<'ast>,
@@ -405,7 +407,7 @@ fn visit_relation_field_attributes<'ast>(
         // @relation
         // Relation attributes are not required _yet_ at this stage. The schema has to be parseable for standardization.
         attributes.visit_optional_single("relation", ctx, |relation_args, ctx| {
-            visit_relation(relation_args, model_id, model_data, relation_field, ctx)
+            visit_relation(relation_args, model_id, field_id, model_data, relation_field, ctx)
         });
 
         // @id
@@ -660,7 +662,7 @@ fn visit_model_id<'ast>(
     }
 
     let (name, db_name) = if ctx.db.preview_features.contains(NamedConstraints) {
-        let db_name = primary_key_constraint_name(&ast_model, model_data, args, "@@id", ctx);
+        let db_name = primary_key_constraint_name(ast_model, model_data, args, "@@id", ctx);
         let name = get_name_argument(args, ctx);
         if let Some(err) = ConstraintNames::is_client_name_valid(args.span(), &ast_model.name.name, name, "@@id") {
             ctx.push_error(err);
@@ -743,7 +745,7 @@ fn model_index<'ast>(
             None => None,
         };
 
-        validate_db_name(&ast_model, args, &db_name, "@@index", ctx);
+        validate_db_name(ast_model, args, &db_name, "@@index", ctx);
 
         //We do not want to break existing datamodels for client purposes that use the old `@@index([field], name: "onlydbname")`
         //This would strictly speaking be invalid now since `name` in the index definition translates to the client name
@@ -814,7 +816,7 @@ fn model_unique<'ast>(
 
         let db_name = get_map_argument(args, generated_name, ctx);
 
-        validate_db_name(&ast_model, args, &db_name, "@@unique", ctx);
+        validate_db_name(ast_model, args, &db_name, "@@unique", ctx);
 
         if let Some(err) = ConstraintNames::is_client_name_valid(args.span(), &ast_model.name.name, name, "@@unique") {
             ctx.push_error(err);
@@ -914,6 +916,7 @@ fn common_index_validations<'ast>(
 fn visit_relation<'ast>(
     args: &mut Arguments<'ast>,
     model_id: ast::ModelId,
+    field_id: ast::FieldId,
     model_data: &ModelData<'ast>,
     relation_field: &mut RelationField<'ast>,
     ctx: &mut Context<'ast>,
@@ -940,6 +943,8 @@ fn visit_relation<'ast>(
 
         relation_field.fields = Some(fields);
     }
+
+    relation::validate_relation_field_arity(model_id, field_id, relation_field, ctx);
 
     if let Some(references) = args.optional_arg("references") {
         let references = match resolve_field_array(&references, args.span(), relation_field.referenced_model, ctx) {
@@ -1193,8 +1198,8 @@ fn validate_db_name<'ast>(
 ) {
     if let Some(err) = ConstraintNames::is_db_name_too_long(
         args.span(),
-        &ast_model.name.name,
-        &db_name,
+        ast_model.name(),
+        db_name,
         attribute,
         ctx.db.active_connector(),
     ) {
