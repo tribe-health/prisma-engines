@@ -1,5 +1,5 @@
 use indoc::indoc;
-use migration_engine_tests::sync_test_api::*;
+use migration_engine_tests::test_api::*;
 
 #[test_connector]
 fn basic_create_migration_works(api: TestApi) {
@@ -701,7 +701,7 @@ fn create_constraint_name_tests_w_implicit_names(api: TestApi) {
         });
 }
 
-#[test_connector(preview_features("NamedConstraints"))]
+#[test_connector]
 fn create_constraint_name_tests_w_explicit_names(api: TestApi) {
     let dm = api.datamodel_with_provider(&format!(
         r#"
