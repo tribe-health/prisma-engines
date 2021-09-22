@@ -5,6 +5,7 @@
 mod attributes;
 mod context;
 mod names;
+mod relations;
 mod types;
 mod walkers;
 
@@ -12,6 +13,7 @@ pub(crate) use types::{ScalarField, ScalarFieldType};
 
 use self::{
     context::Context,
+    relations::Relations,
     types::{RelationField, Types},
 };
 use crate::PreviewFeature;
@@ -52,6 +54,7 @@ pub(crate) struct ParserDatabase<'ast> {
     datasource: Option<&'ast Datasource>,
     names: Names<'ast>,
     types: Types<'ast>,
+    relations: Relations<'ast>,
     _preview_features: BitFlags<PreviewFeature>,
 }
 
@@ -68,6 +71,7 @@ impl<'ast> ParserDatabase<'ast> {
             datasource,
             names: Names::default(),
             types: Types::default(),
+            relations: Relations::default(),
             _preview_features: preview_features,
         };
 
@@ -92,13 +96,15 @@ impl<'ast> ParserDatabase<'ast> {
         // Third pass: validate model and field attributes. All these
         // validations should be _order independent_ and only rely on
         // information from previous steps, not from other attributes.
-        for (model_id, model) in ast.iter_models() {
-            attributes::resolve_model_and_field_attributes(model_id, model, &mut ctx)
-        }
+        attributes::resolve_attributes(&mut ctx);
 
         // Fourth step: global validations
         attributes::validate_index_names(&mut ctx);
         attributes::fill_in_default_constraint_names(&mut ctx);
+        attributes::validate_relation_fields(&mut ctx);
+
+        // Fifth step: relation inference
+        relations::infer_relations(&mut ctx);
 
         ctx.finish()
     }
@@ -120,11 +126,14 @@ impl<'ast> ParserDatabase<'ast> {
     }
 
     pub(crate) fn get_enum_database_name(&self, enum_id: ast::EnumId) -> Option<&'ast str> {
-        self.types.enums[&enum_id].mapped_name
+        self.types.enum_attributes[&enum_id].mapped_name
     }
 
     pub(crate) fn get_enum_value_database_name(&self, enum_id: ast::EnumId, value_idx: u32) -> Option<&'ast str> {
-        self.types.enums[&enum_id].mapped_values.get(&value_idx).cloned()
+        self.types.enum_attributes[&enum_id]
+            .mapped_values
+            .get(&value_idx)
+            .cloned()
     }
 
     pub(super) fn active_connector(&self) -> &dyn Connector {

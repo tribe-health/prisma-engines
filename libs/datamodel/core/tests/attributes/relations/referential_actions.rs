@@ -1,7 +1,7 @@
 mod cycle_detection;
 
 use crate::{common::*, config::parse_config};
-use datamodel::ReferentialAction::*;
+use datamodel::ReferentialAction::{self, *};
 use datamodel_connector::ReferentialIntegrity;
 use indoc::{formatdoc, indoc};
 
@@ -63,7 +63,7 @@ fn on_update_actions() {
 
 #[test]
 fn actions_on_mongo() {
-    let actions = &[Restrict, SetNull];
+    let actions = &[Restrict, SetNull, Cascade, NoAction];
 
     for action in actions {
         let dml = formatdoc!(
@@ -81,7 +81,7 @@ fn actions_on_mongo() {
             model B {{
                 id Int @id @map("_id")
                 aId Int
-                a A @relation(fields: [aId], references: [id], onDelete: {action}, onUpdate: {action})
+                a A @relation(fields: [aId], references: [id], onDelete: {action})
             }}
         "#,
             action = action
@@ -90,14 +90,13 @@ fn actions_on_mongo() {
         parse(&dml)
             .assert_has_model("B")
             .assert_has_relation_field("a")
-            .assert_relation_delete_strategy(*action)
-            .assert_relation_update_strategy(*action);
+            .assert_relation_delete_strategy(*action);
     }
 }
 
 #[test]
-fn actions_on_prisma_referential_integrity() {
-    let actions = &[Restrict, SetNull];
+fn on_delete_actions_should_work_on_prisma_referential_integrity() {
+    let actions = &[Restrict, SetNull, Cascade, NoAction];
 
     for action in actions {
         let dml = formatdoc!(
@@ -121,7 +120,7 @@ fn actions_on_prisma_referential_integrity() {
             model B {{
                 id Int @id
                 aId Int
-                a A @relation(fields: [aId], references: [id], onDelete: {action}, onUpdate: {action})
+                a A @relation(fields: [aId], references: [id], onDelete: {action})
             }}
         "#,
             action = action
@@ -130,9 +129,78 @@ fn actions_on_prisma_referential_integrity() {
         parse(&dml)
             .assert_has_model("B")
             .assert_has_relation_field("a")
-            .assert_relation_delete_strategy(*action)
-            .assert_relation_update_strategy(*action);
+            .assert_relation_delete_strategy(*action);
     }
+}
+
+#[test]
+fn on_update_actions_should_not_work_on_prisma_referential_integrity() {
+    let dml = indoc! { r#"
+        datasource db {
+          provider = "mysql"
+          url = "mysql://"
+          referentialIntegrity = "prisma"
+        }
+
+        generator client {
+          provider = "prisma-client-js"
+          previewFeatures = ["referentialIntegrity"]
+        }
+
+        model A {
+          id Int @id
+          bs B[]
+        }
+
+        model B {
+          id Int @id
+          aId Int
+          a A @relation(fields: [aId], references: [id], onUpdate: Restrict)
+        }
+    "#};
+
+    let expect = expect![[r#"
+        [1;91merror[0m: [1mError validating: Referential actions other than `NoAction` will not work for `onUpdate` without foreign keys. Please follow the issue: https://github.com/prisma/prisma/issues/9014[0m
+          [1;94m-->[0m  [4mschema.prisma:20[0m
+        [1;94m   | [0m
+        [1;94m19 | [0m  aId Int
+        [1;94m20 | [0m  a A @relation(fields: [aId], references: [id], [1;91monUpdate: Restrict[0m)
+        [1;94m   | [0m
+    "#]];
+
+    expect.assert_eq(&datamodel::parse_schema(dml).map(drop).unwrap_err());
+}
+
+#[test]
+fn on_update_no_action_should_work_on_prisma_referential_integrity() {
+    let dml = indoc! { r#"
+        datasource db {
+          provider = "mysql"
+          url = "mysql://"
+          referentialIntegrity = "prisma"
+        }
+
+        generator client {
+          provider = "prisma-client-js"
+          previewFeatures = ["referentialIntegrity"]
+        }
+
+        model A {
+          id Int @id
+          bs B[]
+        }
+
+        model B {
+          id Int @id
+          aId Int
+          a A @relation(fields: [aId], references: [id], onUpdate: NoAction)
+        }
+    "#};
+
+    parse(dml)
+        .assert_has_model("B")
+        .assert_has_relation_field("a")
+        .assert_relation_update_strategy(ReferentialAction::NoAction);
 }
 
 #[test]
@@ -223,7 +291,7 @@ fn mongo_uses_prisma_referential_integrity_by_default() {
     "#};
 
     assert_eq!(
-        ReferentialIntegrity::Prisma,
+        Some(ReferentialIntegrity::Prisma),
         parse_config(dml).unwrap().subject.referential_integrity()
     );
 }
@@ -250,7 +318,7 @@ fn sql_databases_use_foreign_keys_referential_integrity_by_default() {
         "#, db = db};
 
         assert_eq!(
-            ReferentialIntegrity::ForeignKeys,
+            Some(ReferentialIntegrity::ForeignKeys),
             parse_config(&dml).unwrap().subject.referential_integrity()
         );
     }
@@ -331,19 +399,17 @@ fn restrict_should_not_work_on_sql_server() {
     "#};
 
     let expected = expect![[r#"
-        [1;91merror[0m: [1mError parsing attribute "@relation": Invalid referential action: `Restrict`. Allowed values: (`Cascade`, `NoAction`, `SetNull`, `SetDefault`)[0m
+        [1;91merror[0m: [1mError validating: Invalid referential action: `Restrict`. Allowed values: (`Cascade`, `NoAction`, `SetNull`, `SetDefault`)[0m
           [1;94m-->[0m  [4mschema.prisma:14[0m
         [1;94m   | [0m
         [1;94m13 | [0m    aId Int
-        [1;94m14 | [0m    [1;91ma A @relation(fields: [aId], references: [id], onUpdate: Restrict, onDelete: Restrict)[0m
-        [1;94m15 | [0m}
+        [1;94m14 | [0m    a A @relation(fields: [aId], references: [id], onUpdate: Restrict, [1;91monDelete: Restrict[0m)
         [1;94m   | [0m
-        [1;91merror[0m: [1mError parsing attribute "@relation": Invalid referential action: `Restrict`. Allowed values: (`Cascade`, `NoAction`, `SetNull`, `SetDefault`)[0m
+        [1;91merror[0m: [1mError validating: Invalid referential action: `Restrict`. Allowed values: (`Cascade`, `NoAction`, `SetNull`, `SetDefault`)[0m
           [1;94m-->[0m  [4mschema.prisma:14[0m
         [1;94m   | [0m
         [1;94m13 | [0m    aId Int
-        [1;94m14 | [0m    [1;91ma A @relation(fields: [aId], references: [id], onUpdate: Restrict, onDelete: Restrict)[0m
-        [1;94m15 | [0m}
+        [1;94m14 | [0m    a A @relation(fields: [aId], references: [id], [1;91monUpdate: Restrict[0m, onDelete: Restrict)
         [1;94m   | [0m
     "#]];
 
@@ -391,88 +457,6 @@ fn actions_should_be_defined_only_from_one_side() {
 }
 
 #[test]
-fn cascade_action_should_not_work_on_prisma_level_referential_integrity() {
-    let dml = indoc!(
-        r#"
-            datasource db {
-                provider = "mysql"
-                referentialIntegrity = "prisma"
-                url = "mysql://root:prisma@localhost:3306/mydb"
-            }
-
-            generator client {
-                provider = "prisma-client-js"
-                previewFeatures = ["referentialIntegrity"]
-            }
-
-            model A {{
-                id Int @id @map("_id")
-                bs B[]
-            }
-
-            model B {
-                id Int @id @map("_id")
-                aId Int
-                a A @relation(fields: [aId], references: [id], onDelete: Cascade)
-            }
-        "#,
-    );
-
-    let expected = expect![[r#"
-        [1;91merror[0m: [1mError parsing attribute "@relation": Invalid referential action: `Cascade`. Allowed values: (`Restrict`, `SetNull`)[0m
-          [1;94m-->[0m  [4mschema.prisma:20[0m
-        [1;94m   | [0m
-        [1;94m19 | [0m    aId Int
-        [1;94m20 | [0m    [1;91ma A @relation(fields: [aId], references: [id], onDelete: Cascade)[0m
-        [1;94m21 | [0m}
-        [1;94m   | [0m
-    "#]];
-
-    expected.assert_eq(&datamodel::parse_schema(dml).map(drop).unwrap_err());
-}
-
-#[test]
-fn no_action_should_not_work_on_prisma_level_referential_integrity() {
-    let dml = indoc!(
-        r#"
-            datasource db {
-                provider = "mysql"
-                referentialIntegrity = "prisma"
-                url = "mysql://root:prisma@localhost:3306/mydb"
-            }
-
-            generator client {
-                provider = "prisma-client-js"
-                previewFeatures = ["referentialIntegrity"]
-            }
-
-            model A {{
-                id Int @id @map("_id")
-                bs B[]
-            }
-
-            model B {
-                id Int @id @map("_id")
-                aId Int
-                a A @relation(fields: [aId], references: [id], onDelete: NoAction)
-            }
-        "#,
-    );
-
-    let expected = expect![[r#"
-        [1;91merror[0m: [1mError parsing attribute "@relation": Invalid referential action: `NoAction`. Allowed values: (`Restrict`, `SetNull`)[0m
-          [1;94m-->[0m  [4mschema.prisma:20[0m
-        [1;94m   | [0m
-        [1;94m19 | [0m    aId Int
-        [1;94m20 | [0m    [1;91ma A @relation(fields: [aId], references: [id], onDelete: NoAction)[0m
-        [1;94m21 | [0m}
-        [1;94m   | [0m
-    "#]];
-
-    expected.assert_eq(&datamodel::parse_schema(dml).map(drop).unwrap_err());
-}
-
-#[test]
 fn set_default_action_should_not_work_on_prisma_level_referential_integrity() {
     let dml = indoc!(
         r#"
@@ -501,12 +485,11 @@ fn set_default_action_should_not_work_on_prisma_level_referential_integrity() {
     );
 
     let expected = expect![[r#"
-        [1;91merror[0m: [1mError parsing attribute "@relation": Invalid referential action: `SetDefault`. Allowed values: (`Restrict`, `SetNull`)[0m
+        [1;91merror[0m: [1mError validating: Invalid referential action: `SetDefault`. Allowed values: (`Cascade`, `Restrict`, `NoAction`, `SetNull`)[0m
           [1;94m-->[0m  [4mschema.prisma:20[0m
         [1;94m   | [0m
         [1;94m19 | [0m    aId Int
-        [1;94m20 | [0m    [1;91ma A @relation(fields: [aId], references: [id], onDelete: SetDefault)[0m
-        [1;94m21 | [0m}
+        [1;94m20 | [0m    a A @relation(fields: [aId], references: [id], [1;91monDelete: SetDefault[0m)
         [1;94m   | [0m
     "#]];
 
