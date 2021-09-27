@@ -12,13 +12,15 @@ ENV RUST_BACKTRACE=1
 ENV RUST_LOG=query_engine=debug,quaint=debug,query_core=debug,query_connector=debug,sql_query_connector=debug,prisma_models=debug,engineer=debug
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-ADD . /usr/src/query-engine
-WORKDIR /usr/src/query-engine/
+ADD . /usr/src/prisma-engines
+WORKDIR /usr/src/prisma-engines/
 
 RUN cargo build --release
 
 FROM debian:buster-slim
 
-COPY --from=builder /usr/src/query-engine/target/release/query-engine /usr/bin/query-engine
+COPY --from=builder /usr/src/prisma-engines/target/release/query-engine /usr/bin/query-engine
+COPY --from=builder /usr/src/prisma-engines/target/release/introspection-engine /usr/bin/introspection-engine
+COPY --from=builder /usr/src/prisma-engines/target/release/migration-engine /usr/bin/migration-engine
 
 CMD /usr/bin/query-engine --host 0.0.0.0 --enable-playground
