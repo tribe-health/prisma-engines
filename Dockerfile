@@ -1,4 +1,4 @@
-FROM rust:1.54.0
+FROM rust:latest as builder
 MAINTAINER Julius de Bruijn <bruijn@prisma.io>
 
 ENV USER root
@@ -16,10 +16,9 @@ ADD . /usr/src/query-engine
 WORKDIR /usr/src/query-engine/
 
 RUN cargo build --release
-RUN mv target/release/query-engine /usr/bin
-RUN mv target/release/migration-engine /usr/bin
 
-WORKDIR /
+FROM debian:buster-slim
 
-RUN rm -rf /usr/src
+COPY --from=builder /usr/src/query-engine/target/release/query-engine /usr/bin/query-engine
+
 CMD /usr/bin/query-engine --host 0.0.0.0 --enable-playground
