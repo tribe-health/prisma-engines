@@ -12,10 +12,8 @@ ENV RUST_BACKTRACE=1
 ENV RUST_LOG=query_engine=debug,quaint=debug,query_core=debug,query_connector=debug,sql_query_connector=debug,prisma_models=debug,engineer=debug
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-ADD . /usr/src/prisma-engines
 WORKDIR /usr/src/prisma-engines/
-
-RUN cargo build --release
+COPY . .
 RUN cargo install --path .
 
 FROM debian:buster-slim
