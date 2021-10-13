@@ -16,11 +16,13 @@ ADD . /usr/src/prisma-engines
 WORKDIR /usr/src/prisma-engines/
 
 RUN cargo build --release
+RUN cargo install --path .
 
-FROM busybox:glibc
+FROM debian:buster-slim
+RUN apt-get update && apt-get install -y extra-runtime-dependencies && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /usr/src/prisma-engines/target/release/query-engine /usr/bin/query-engine
-COPY --from=builder /usr/src/prisma-engines/target/release/introspection-engine /usr/bin/introspection-engine
-COPY --from=builder /usr/src/prisma-engines/target/release/migration-engine /usr/bin/migration-engine
+COPY --from=builder /usr/src/prisma-engines/query-engine /usr/bin/query-engine
+COPY --from=builder /usr/src/prisma-engines/introspection-engine /usr/bin/introspection-engine
+COPY --from=builder /usr/src/prisma-engines/migration-engine /usr/bin/migration-engine
 
 CMD /usr/bin/query-engine --host 0.0.0.0 --enable-playground
