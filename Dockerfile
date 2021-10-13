@@ -17,16 +17,9 @@ WORKDIR /usr/src/prisma-engines/
 
 RUN cargo build --release
 
-FROM debian:bullseye-slim
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates
 
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-        ca-certificates \
-        gcc \
-        libc6-dev \
-        wget \
-        ; \
 
 COPY --from=builder /usr/src/prisma-engines/target/release/query-engine /usr/bin/query-engine
 COPY --from=builder /usr/src/prisma-engines/target/release/introspection-engine /usr/bin/introspection-engine
