@@ -3,6 +3,8 @@ MAINTAINER Julius de Bruijn <bruijn@prisma.io>
 
 ENV USER root
 
+RUN rustup target add x86_64-unknown-linux-musl
+
 RUN apt-get -y update
 RUN apt-get -y install libssl-dev build-essential
 
@@ -16,13 +18,12 @@ ADD . /usr/src/prisma-engines
 WORKDIR /usr/src/prisma-engines/
 
 RUN cargo build --release
+RUN cargo install --target x86_64-unknown-linux-musl --path ./bin
 
 FROM alpine:latest
-RUN apk --no-cache add ca-certificates
 
-
-COPY --from=builder /usr/src/prisma-engines/target/release/query-engine /usr/bin/query-engine
-COPY --from=builder /usr/src/prisma-engines/target/release/introspection-engine /usr/bin/introspection-engine
-COPY --from=builder /usr/src/prisma-engines/target/release/migration-engine /usr/bin/migration-engine
+COPY --from=builder /usr/src/prisma-engines/bin/query-engine /usr/bin/query-engine
+COPY --from=builder /usr/src/prisma-engines/bin/introspection-engine /usr/bin/introspection-engine
+COPY --from=builder /usr/src/prisma-engines/bin/migration-engine /usr/bin/migration-engine
 
 CMD /usr/bin/query-engine --host 0.0.0.0 --enable-playground
