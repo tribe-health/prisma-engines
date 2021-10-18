@@ -157,7 +157,7 @@ fn non_list_scalar_update_field_mapper(
         TypeIdentifier::String => InputType::object(operations_object_type(ctx, "String", field, false)),
         TypeIdentifier::Boolean => InputType::object(operations_object_type(ctx, "Bool", field, false)),
         TypeIdentifier::Enum(e) => InputType::object(operations_object_type(ctx, &format!("Enum{}", e), field, false)),
-        TypeIdentifier::Json => map_scalar_input_type_for_field(ctx, field),
+        TypeIdentifier::Json => InputType::object(operations_object_type(ctx, "Json", field, false)),
         TypeIdentifier::DateTime => InputType::object(operations_object_type(ctx, "DateTime", field, false)),
         TypeIdentifier::UUID => InputType::object(operations_object_type(ctx, "Uuid", field, false)),
         TypeIdentifier::Xml => InputType::object(operations_object_type(ctx, "Xml", field, false)),
@@ -165,9 +165,9 @@ fn non_list_scalar_update_field_mapper(
         TypeIdentifier::Unsupported => unreachable!("No unsupported field should reach that path"),
     };
 
-    let has_adv_json = ctx.has_capability(ConnectorCapability::AdvancedJsonNullability);
+    //let has_adv_json = ctx.has_capability(ConnectorCapability::AdvancedJsonNullability);
     match &field.type_identifier {
-        TypeIdentifier::Json if has_adv_json => {
+        /*TypeIdentifier::Json if has_adv_json => {
             let enum_type = json_null_input_enum(!field.is_required);
             let input_field = input_field(
                 field.name.clone(),
@@ -176,7 +176,7 @@ fn non_list_scalar_update_field_mapper(
             );
 
             input_field.optional()
-        }
+        }*/
 
         _ => {
             let types = vec![map_scalar_input_type_for_field(ctx, field), base_update_type];
