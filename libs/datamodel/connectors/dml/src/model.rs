@@ -118,6 +118,7 @@ impl Model {
     pub fn scalar_fields_mut(&mut self) -> impl Iterator<Item = &mut ScalarField> {
         self.fields_mut().filter_map(|fw| match fw {
             Field::RelationField(_) => None,
+            Field::CompositeField(_) => None,
             Field::ScalarField(sf) => Some(sf),
         })
     }
@@ -126,6 +127,7 @@ impl Model {
     pub fn relation_fields_mut(&mut self) -> impl Iterator<Item = &mut RelationField> {
         self.fields_mut().filter_map(|fw| match fw {
             Field::RelationField(rf) => Some(rf),
+            Field::CompositeField(_) => None,
             Field::ScalarField(_) => None,
         })
     }
@@ -170,6 +172,7 @@ impl Model {
     }
 
     /// Finds a relation field by name and returns a mutable reference.
+    #[track_caller]
     pub fn find_relation_field_mut(&mut self, name: &str) -> &mut RelationField {
         let model_name = &self.name.clone();
         self.relation_fields_mut().find(|rf| rf.name == *name).expect(&*format!(
