@@ -34,6 +34,7 @@ mod tests {
 
         IntrospectionContext {
             source,
+            composite_type_depth: Default::default(),
             preview_features: BitFlags::empty(),
         }
     }
@@ -106,7 +107,6 @@ mod tests {
                         ],
                         documentation: None,
                         database_name: None,
-                        is_embedded: false,
                         indices: [],
                         primary_key: Some(
                             PrimaryKeyDefinition {
@@ -174,7 +174,6 @@ mod tests {
                     database_name: None,
                     name: "Table1".to_string(),
                     documentation: None,
-                    is_embedded: false,
                     is_commented_out: false,
                     is_ignored: false,
                     fields: vec![Field::ScalarField(ScalarField {
@@ -211,7 +210,6 @@ mod tests {
                     database_name: None,
                     name: "Table2".to_string(),
                     documentation: None,
-                    is_embedded: false,
                     is_commented_out: false,
                     is_ignored: false,
                     fields: vec![Field::ScalarField(ScalarField {
@@ -248,7 +246,6 @@ mod tests {
                     database_name: None,
                     name: "Table3".to_string(),
                     documentation: None,
-                    is_embedded: false,
                     is_commented_out: false,
                     is_ignored: false,
                     fields: vec![Field::ScalarField(ScalarField {
@@ -366,7 +363,6 @@ mod tests {
                 database_name: None,
                 name: "Table1".to_string(),
                 documentation: None,
-                is_embedded: false,
                 is_commented_out: false,
                 is_ignored: false,
                 fields: vec![
@@ -441,7 +437,6 @@ mod tests {
                     database_name: None,
                     name: "City".to_string(),
                     documentation: None,
-                    is_embedded: false,
                     is_commented_out: false,
                     is_ignored: false,
                     fields: vec![
@@ -506,7 +501,6 @@ mod tests {
                     database_name: None,
                     name: "User".to_string(),
                     documentation: None,
-                    is_embedded: false,
                     is_commented_out: false,
                     is_ignored: false,
                     fields: vec![
@@ -708,7 +702,6 @@ mod tests {
                 database_name: None,
                 name: "User".to_string(),
                 documentation: None,
-                is_embedded: false,
                 is_commented_out: false,
                 is_ignored: false,
                 fields: vec![
@@ -842,7 +835,6 @@ mod tests {
                     database_name: None,
                     name: "City".to_string(),
                     documentation: None,
-                    is_embedded: false,
                     is_commented_out: false,
                     is_ignored: false,
                     fields: vec![
@@ -907,7 +899,6 @@ mod tests {
                     database_name: None,
                     name: "User".to_string(),
                     documentation: None,
-                    is_embedded: false,
                     is_commented_out: false,
                     is_ignored: false,
                     fields: vec![
