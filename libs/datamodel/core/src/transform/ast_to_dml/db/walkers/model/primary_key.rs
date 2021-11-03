@@ -14,6 +14,14 @@ pub(crate) struct PrimaryKeyWalker<'ast, 'db> {
 }
 
 impl<'ast, 'db> PrimaryKeyWalker<'ast, 'db> {
+    pub(crate) fn ast_attribute(self) -> &'ast ast::Attribute {
+        self.ast_model().id_attribute()
+    }
+
+    fn ast_model(&self) -> &'ast ast::Model {
+        &self.db.ast[self.model_id]
+    }
+
     pub(crate) fn final_database_name(self) -> Option<Cow<'ast, str>> {
         if !self.db.active_connector().supports_named_primary_keys() {
             return None;
@@ -50,6 +58,10 @@ impl<'ast, 'db> PrimaryKeyWalker<'ast, 'db> {
             db: self.db,
             scalar_field: &self.db.types.scalar_fields[&(self.model_id, *field_id)],
         })
+    }
+
+    pub(crate) fn contains_exactly_fields_by_id(self, fields: &[ast::FieldId]) -> bool {
+        self.attribute.fields == fields
     }
 
     pub(crate) fn contains_exactly_fields(

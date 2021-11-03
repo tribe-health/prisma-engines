@@ -1,8 +1,13 @@
 CONFIG_PATH = ./query-engine/connector-test-kit-rs/test-configs
 CONFIG_FILE = .test_config
-
+SCHEMA_EXAMPLES_PATH = ./query-engine/example_schemas
+DEV_SCHEMA_FILE = dev_datamodel.prisma
 
 default: build
+
+##################
+# Build commands #
+##################
 
 build:
 	cargo build
@@ -13,6 +18,10 @@ pedantic:
 
 release:
 	cargo build --release
+
+#################
+# Test commands #
+#################
 
 test-qe:
 	cargo test --package query-engine-tests
@@ -28,8 +37,15 @@ test-qe-st:
 test-qe-verbose-st:
 	cargo test --package query-engine-tests -- --nocapture --test-threads 1
 
-all-dbs:
-	docker-compose -f docker-compose.yml up  -d --remove-orphans
+###########################
+# Database setup commands #
+###########################
+
+all-dbs-up:
+	docker-compose -f docker-compose.yml up -d --remove-orphans
+
+all-dbs-down:
+	docker-compose -f docker-compose.yml down -v --remove-orphans
 
 start-sqlite:
 
@@ -71,6 +87,13 @@ start-postgres13:
 dev-postgres13: start-postgres13
 	echo 'postgres13' > current_connector
 	cp $(CONFIG_PATH)/postgres13 $(CONFIG_FILE)
+
+start-postgres14:
+	docker-compose -f docker-compose.yml up -d --remove-orphans postgres14
+
+dev-postgres14: start-postgres14
+	echo 'postgres14' > current_connector
+	cp $(CONFIG_PATH)/postgres14 $(CONFIG_FILE)
 
 start-cockroach:
 	docker-compose -f docker-compose.yml up -d --remove-orphans cockroach
@@ -127,18 +150,25 @@ dev-mssql2017: start-mssql_2017
 	echo 'mssql2017' > current_connector
 	cp $(CONFIG_PATH)/sqlserver2017 $(CONFIG_FILE)
 
-start-mongodb:
-	docker-compose -f docker-compose.yml up -d --remove-orphans mongo4
-
 start-mongodb4-single:
 	docker-compose -f docker-compose.yml up -d --remove-orphans mongo4-single
 
 start-mongodb5-single:
 	docker-compose -f docker-compose.yml up -d --remove-orphans mongo5-single
 
-dev-mongodb: start-mongodb
+start-mongodb4:
+	docker-compose -f docker-compose.yml up -d --remove-orphans mongo4
+
+dev-mongodb4: start-mongodb4
 	echo 'mongodb' > current_connector
 	cp $(CONFIG_PATH)/mongodb4 $(CONFIG_FILE)
+
+start-mongodb5:
+	docker-compose -f docker-compose.yml up -d --remove-orphans mongo5
+
+dev-mongodb5: start-mongodb5
+	echo 'mongodb' > current_connector
+	cp $(CONFIG_PATH)/mongodb5 $(CONFIG_FILE)
 
 start-vitess_5_7:
 	docker-compose -f docker-compose.yml up -d --remove-orphans vitess-test-5_7 vitess-shadow-5_7
@@ -154,8 +184,26 @@ dev-vitess_8_0: start-vitess_8_0
 	echo 'vitess_8_0' > current_connector
 	cp $(CONFIG_PATH)/vitess_8_0 $(CONFIG_FILE)
 
-dev-down:
-	docker-compose -f docker-compose.yml down -v --remove-orphans
+######################
+# Local dev commands #
+######################
+
+qe:
+	cargo run --bin query-engine -- --enable-playground --enable-raw-queries
+
+push-schema:
+	cargo run --bin test-cli -- schema-push $(DEV_SCHEMA_FILE) --force
+
+qe-dev-chinook-sqlite:
+	cp $(SCHEMA_EXAMPLES_PATH)/chinook_sqlite.prisma $(DEV_SCHEMA_FILE)
+
+qe-dev-chinook-postgres10: start-postgres10
+	cp $(SCHEMA_EXAMPLES_PATH)/chinook_postgres10.prisma $(DEV_SCHEMA_FILE)
+	sleep 5
+	make push-schema
+
+qe-dev-mongo4: start-mongodb4
+	cp $(SCHEMA_EXAMPLES_PATH)/generic_mongo4.prisma $(DEV_SCHEMA_FILE)
 
 use-local-migration-engine:
 	cargo build --release
