@@ -22,5 +22,6 @@ RUN apt-get update && apt-get install -y build-essential && rm -rf /var/lib/apt/
 COPY --from=builder /usr/src/prisma-engines/target/release/query-engine /usr/bin/query-engine
 COPY --from=builder /usr/src/prisma-engines/target/release/introspection-engine /usr/bin/introspection-engine
 COPY --from=builder /usr/src/prisma-engines/target/release/migration-engine /usr/bin/migration-engine
+COPY --from=builder /usr/src/prisma-engines/cordico/schema.prisma /prisma/schema.prisma
 
-CMD /usr/bin/query-engine --host 0.0.0.0 --enable-playground
+CMD /usr/bin/query-engine --host 0.0.0.0 --enable-playground --datamodel-path /prisma/schema.prisma
