@@ -264,7 +264,7 @@ fn json_equality_filters(
     mapped_type: InputType,
     nullable: bool,
 ) -> impl Iterator<Item = InputField> {
-    let field = if ctx.has_capability(ConnectorCapability::AdvancedJsonNullability) {
+    let field = if false /*ctx.has_capability(ConnectorCapability::AdvancedJsonNullability)*/ {
         let enum_type = json_null_filter_enum();
         input_field(filters::EQUALS, vec![InputType::Enum(enum_type), mapped_type], None).optional()
     } else {
@@ -434,7 +434,7 @@ fn not_filter_field(
     include_aggregates: bool,
     is_list: bool,
 ) -> InputField {
-    let has_adv_json = ctx.has_capability(ConnectorCapability::AdvancedJsonNullability);
+    let has_adv_json = false; // ctx.has_capability(ConnectorCapability::AdvancedJsonNullability);
 
     match typ {
         // Json is not nullable on dbs with `AdvancedJsonNullability`, only by proxy through an enum.
