@@ -1,6 +1,6 @@
-use crate::attributes::with_postgres_provider;
 use crate::common::*;
-use datamodel::{dml, render_datamodel_to_string, IndexDefinition, IndexType, ScalarType};
+use crate::{with_header, Provider};
+use datamodel::{dml, render_datamodel_to_string, IndexDefinition, IndexField, IndexType, ScalarType};
 
 #[test]
 fn must_add_referenced_fields_on_both_sides_for_many_to_many_relations() {
@@ -225,7 +225,7 @@ fn allow_complicated_self_relations() {
 
 #[test]
 fn allow_explicit_fk_name_definition() {
-    let dml = with_postgres_provider(
+    let dml = with_header(
         r#"
      model User {
          user_id Int    @id
@@ -238,6 +238,8 @@ fn allow_explicit_fk_name_definition() {
          user    User    @relation(fields: user_id, references: user_id, map: "CustomFKName")
      }
      "#,
+        Provider::Postgres,
+        &[],
     );
 
     let schema = parse(&dml);
@@ -255,7 +257,7 @@ fn allow_explicit_fk_name_definition() {
 
 #[test]
 fn allow_implicit_fk_name_definition() {
-    let dml = with_postgres_provider(
+    let dml = with_header(
         r#"
      model User {
          user_id Int    @id
@@ -268,6 +270,8 @@ fn allow_implicit_fk_name_definition() {
          user    User    @relation(fields: user_id, references: user_id)
      }
      "#,
+        Provider::Postgres,
+        &[],
     );
 
     let schema = parse(&dml);
@@ -285,7 +289,7 @@ fn allow_implicit_fk_name_definition() {
 
 #[test]
 fn implicit_fk_name_definition_with_mapped_models_and_fields() {
-    let dml = with_postgres_provider(
+    let dml = with_header(
         r#"
      model User {
          user_id Int    @id  @map("user_id_map")
@@ -302,6 +306,8 @@ fn implicit_fk_name_definition_with_mapped_models_and_fields() {
          @@map("PostMap")
      }
      "#,
+        Provider::Postgres,
+        &[],
     );
 
     let schema = parse(&dml);
@@ -319,7 +325,7 @@ fn implicit_fk_name_definition_with_mapped_models_and_fields() {
 
 #[test]
 fn implicit_fk_name_definition_with_mapped_models_and_fields_other_order() {
-    let dml = with_postgres_provider(
+    let dml = with_header(
         r#"
      model User {
          user_id Int    @id  @map("user_id_map")
@@ -336,6 +342,8 @@ fn implicit_fk_name_definition_with_mapped_models_and_fields_other_order() {
          @@map("PostMap")
      }
      "#,
+        Provider::Postgres,
+        &[],
     );
 
     let schema = parse(&dml);
@@ -353,7 +361,8 @@ fn implicit_fk_name_definition_with_mapped_models_and_fields_other_order() {
 
 #[test]
 fn implicit_unique_constraint_on_one_to_one() {
-    let dml = with_postgres_provider(indoc! {r#"
+    let dml = with_header(
+        indoc! {r#"
         model User {
           user_id Int    @id  @map("user_id_map")
           post    Post?
@@ -368,7 +377,10 @@ fn implicit_unique_constraint_on_one_to_one() {
           
           @@map("PostMap")
         }
-    "#});
+    "#},
+        Provider::Postgres,
+        &[],
+    );
 
     let schema = parse(&dml);
 
@@ -386,15 +398,16 @@ fn implicit_unique_constraint_on_one_to_one() {
     schema.assert_has_model("Post").assert_has_index(IndexDefinition {
         name: None,
         db_name: Some("PostMap_user_id_map_on_post_key".to_string()),
-        fields: vec!["user_id".to_string()],
+        fields: vec![IndexField::new("user_id")],
         tpe: IndexType::Unique,
         defined_on_field: true,
+        algorithm: None,
     });
 }
 
 #[test]
 fn implicit_unique_constraint_on_compound_one_to_one() {
-    let dml = with_postgres_provider(
+    let dml = with_header(
         r#"
      model User {
          user_id_1  Int    
@@ -411,6 +424,8 @@ fn implicit_unique_constraint_on_compound_one_to_one() {
          user       User   @relation(fields: [user_id_1, user_id_2], references: [user_id_1, user_id_2])
      }
      "#,
+        Provider::Postgres,
+        &[],
     );
 
     let schema = parse(&dml);
@@ -428,15 +443,17 @@ fn implicit_unique_constraint_on_compound_one_to_one() {
     schema.assert_has_model("Post").assert_has_index(IndexDefinition {
         name: None,
         db_name: Some("Post_user_id_1_user_id_2_key".to_string()),
-        fields: vec!["user_id_1".to_string(), "user_id_2".to_string()],
+        fields: vec![IndexField::new("user_id_1"), IndexField::new("user_id_2")],
         tpe: IndexType::Unique,
         defined_on_field: false,
+        algorithm: None,
     });
 }
 
 #[test]
 fn no_unique_constraint_if_referring_the_pk() {
-    let dml = with_postgres_provider(indoc! {r#"
+    let dml = with_header(
+        indoc! {r#"
         model Cat {
           id      Int @id
           collar  Collar?
@@ -446,7 +463,10 @@ fn no_unique_constraint_if_referring_the_pk() {
           id      Int @id
           cat     Cat @relation(fields:[id], references: [id])
         }
-    "#});
+    "#},
+        Provider::Postgres,
+        &[],
+    );
 
     let expected = expect![[r#"
         model Cat {
@@ -481,4 +501,39 @@ fn one_to_one_optional() {
     let schema = parse(dml);
     schema.assert_has_model("A").assert_has_relation_field("b");
     schema.assert_has_model("B").assert_has_relation_field("a");
+}
+
+#[test]
+fn mongodb_inline_many_to_many_relations_are_allowed() {
+    let schema = indoc! {r#"
+    datasource db {
+      provider = "mongodb"
+      url = env("DB_URL")
+    }
+
+    generator js {
+      provider = "prisma-client-js"
+      previewFeatures = ["mongoDb"]
+    }
+
+    model A {
+        id  String  @id @map("_id") @db.ObjectId
+        gql String?
+
+        b_ids String[] @db.Array(ObjectId)
+        bs    B[]      @relation(fields: [b_ids])
+    }
+
+    model B {
+        id  String  @id @map("_id") @db.ObjectId
+        gql String?
+
+        a_ids String[] @db.Array(ObjectId)
+        as    A[]      @relation(fields: [a_ids])
+    }
+    "#};
+
+    let schema = parse(schema);
+    schema.assert_has_model("A").assert_has_relation_field("bs");
+    schema.assert_has_model("B").assert_has_relation_field("as");
 }

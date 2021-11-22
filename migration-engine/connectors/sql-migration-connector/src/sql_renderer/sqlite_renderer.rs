@@ -28,7 +28,17 @@ impl SqlRenderer for SqliteFlavour {
         };
         let index_name = self.quote(index.name());
         let table_reference = self.quote(index.table().name());
-        let columns = index.columns().map(|c| self.quote(c.name()));
+
+        let columns = index.columns().map(|c| {
+            let mut rendered = format!("{}", self.quote(c.get().name()));
+
+            if let Some(sort_order) = c.sort_order() {
+                rendered.push(' ');
+                rendered.push_str(sort_order.as_ref());
+            }
+
+            rendered
+        });
 
         let index_create = format!(
             "CREATE {index_type}INDEX {index_name} ON {table_reference}({columns})",
@@ -130,7 +140,7 @@ impl SqlRenderer for SqliteFlavour {
         if !table.columns().any(|col| col.is_single_primary_key()) {
             create_table.primary_key = table
                 .primary_key_column_names()
-                .map(|slice| slice.iter().map(|name| name.into()).collect());
+                .map(|v| v.into_iter().map(|name| name.into()).collect());
         }
 
         create_table.to_string()

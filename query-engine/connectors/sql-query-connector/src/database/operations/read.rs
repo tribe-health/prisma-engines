@@ -1,5 +1,6 @@
 use crate::{
     column_metadata,
+    model_extensions::*,
     query_arguments_ext::QueryArgumentsExt,
     query_builder::{self, read},
     sql_info::SqlInfo,
@@ -87,6 +88,13 @@ pub async fn get_many_records(
             if query_arguments.has_unbatchable_ordering() {
                 return Err(SqlError::QueryParameterLimitExceeded(
                     "Your query cannot be split into multiple queries because of the order by aggregation or relevance"
+                        .to_string(),
+                ));
+            }
+
+            if query_arguments.has_unbatchable_filters() {
+                return Err(SqlError::QueryParameterLimitExceeded(
+                    "Parameter limits for this database provider require this query to be split into multiple queries, but the negation filters used prevent the query from being split. Please reduce the used values in the query."
                         .to_string(),
                 ));
             }
