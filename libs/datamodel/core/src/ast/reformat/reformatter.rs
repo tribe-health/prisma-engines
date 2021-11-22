@@ -775,7 +775,8 @@ impl<'a> Reformatter<'a> {
     //duplicated from renderer -.-
     fn render_value(target: &mut StringBuilder, val: &ast::Expression) {
         match val {
-            ast::Expression::Array(vals, _) => Self::render_array(target, vals),
+            ast::Expression::Array(vals, _) => Self::render_expression_array(target, vals),
+            ast::Expression::FieldWithArgs(ident, vals, _) => Self::render_constant_value_w_args(target, ident, vals),
             ast::Expression::BooleanValue(val, _) => target.write(val),
             ast::Expression::ConstantValue(val, _) => target.write(val),
             ast::Expression::NumericValue(val, _) => target.write(val),
@@ -783,7 +784,29 @@ impl<'a> Reformatter<'a> {
             ast::Expression::Function(name, args, _) => Self::render_func(target, name, args),
         };
     }
-    fn render_array(target: &mut StringBuilder, vals: &[ast::Expression]) {
+
+    fn render_constant_value_w_args(target: &mut StringBuilder, ident: &str, vals: &[ast::Argument]) {
+        target.write(ident);
+        target.write("(");
+        for (idx, arg) in vals.iter().enumerate() {
+            if idx > 0 {
+                target.write(", ");
+            }
+            Self::render_argument(target, arg);
+        }
+        target.write(")");
+    }
+
+    fn render_argument(target: &mut StringBuilder, arg: &ast::Argument) {
+        if !arg.name.name.is_empty() {
+            target.write(&arg.name.name);
+            target.write(": ");
+        }
+
+        Self::render_value(target, &arg.value);
+    }
+
+    fn render_expression_array(target: &mut StringBuilder, vals: &[ast::Expression]) {
         target.write("[");
         for (idx, arg) in vals.iter().enumerate() {
             if idx > 0 {
@@ -856,6 +879,7 @@ impl<'a> Reformatter<'a> {
                 Rule::constant_literal => target.write(current.as_str()),
                 Rule::function => Self::reformat_function_expression(target, &current),
                 Rule::array_expression => Self::reformat_array_expression(target, &current),
+                Rule::field_with_args => Self::reformat_field_with_args(target, &current),
                 Rule::doc_comment | Rule::doc_comment_and_new_line => {
                     panic!("Comments inside expressions not supported yet.")
                 }
@@ -885,6 +909,32 @@ impl<'a> Reformatter<'a> {
         }
 
         target.write("]");
+    }
+
+    fn reformat_field_with_args(target: &mut dyn LineWriteable, token: &Token<'_>) {
+        let mut has_seen_one_argument = false;
+
+        for current in token.clone().into_inner() {
+            match current.as_rule() {
+                Rule::non_empty_identifier => {
+                    target.write(current.as_str());
+                    target.write("(");
+                }
+                Rule::argument => {
+                    if has_seen_one_argument {
+                        target.write(", ");
+                    }
+                    target.write(current.as_str());
+                    has_seen_one_argument = true;
+                }
+                Rule::doc_comment | Rule::doc_comment_and_new_line => {
+                    panic!("Comments inside expressions not supported yet.")
+                }
+                _ => Self::reformat_generic_token(target, &current),
+            }
+        }
+
+        target.write(")");
     }
 
     fn reformat_function_expression(target: &mut dyn LineWriteable, token: &Token<'_>) {

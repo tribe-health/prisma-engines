@@ -1,5 +1,5 @@
-use crate::attributes::with_postgres_provider;
 use crate::common::*;
+use crate::{with_header, Provider};
 
 #[test]
 fn must_error_on_model_without_unique_criteria() {
@@ -352,7 +352,8 @@ fn mapping_unique_with_a_name_that_is_too_long_should_error() {
 
 #[test]
 fn naming_unique_to_a_field_name_should_error() {
-    let dml = with_postgres_provider(indoc! {r#"
+    let dml = with_header(
+        indoc! {r#"
         model User {
           used           Int
           name           String            
@@ -360,7 +361,10 @@ fn naming_unique_to_a_field_name_should_error() {
 
           @@unique([name, identification], name: "used")
         }
-    "#});
+    "#},
+        Provider::Postgres,
+        &[],
+    );
 
     let error = datamodel::parse_schema(&dml).map(drop).unwrap_err();
 
@@ -368,7 +372,7 @@ fn naming_unique_to_a_field_name_should_error() {
         [1;91merror[0m: [1mError validating model "User": The custom name `used` specified for the `@@unique` attribute is already used as a name for a field. Please choose a different name.[0m
           [1;94m-->[0m  [4mschema.prisma:11[0m
         [1;94m   | [0m
-        [1;94m10 | [0m    }
+        [1;94m10 | [0m
         [1;94m11 | [0m[1;91mmodel User {[0m
         [1;94m12 | [0m  used           Int
         [1;94m13 | [0m  name           String            
@@ -384,11 +388,15 @@ fn naming_unique_to_a_field_name_should_error() {
 
 #[test]
 fn naming_field_level_unique_should_error() {
-    let dml = with_postgres_provider(indoc! {r#"
+    let dml = with_header(
+        indoc! {r#"
         model User {
           used           Int @unique(name: "INVALID ON FIELD LEVEL")
         }
-    "#});
+    "#},
+        Provider::Postgres,
+        &[],
+    );
 
     let error = datamodel::parse_schema(&dml).map(drop).unwrap_err();
 
@@ -406,13 +414,17 @@ fn naming_field_level_unique_should_error() {
 
 #[test]
 fn duplicate_implicit_names_should_error() {
-    let dml = with_postgres_provider(indoc! {r#"
+    let dml = with_header(
+        indoc! {r#"
         model User {
           used           Int @unique
 
           @@unique([used])
         }
-    "#});
+    "#},
+        Provider::Postgres,
+        &[],
+    );
 
     let error = datamodel::parse_schema(&dml).map(drop).unwrap_err();
 

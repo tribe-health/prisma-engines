@@ -58,120 +58,67 @@ const NATIVE_TYPES_THAT_CAN_NOT_BE_USED_IN_KEY_SPECIFICATION: &[&str] = &[
     LONG_BLOB_TYPE_NAME,
 ];
 
-pub struct MySqlDatamodelConnector {
-    capabilities: Vec<ConnectorCapability>,
-    constructors: Vec<NativeTypeConstructor>,
-    referential_integrity: ReferentialIntegrity,
-    constraint_violation_scopes: Vec<ConstraintScope>,
-}
+const NATIVE_TYPE_CONSTRUCTORS: &[NativeTypeConstructor] = &[
+    NativeTypeConstructor::without_args(INT_TYPE_NAME, &[ScalarType::Int]),
+    NativeTypeConstructor::without_args(UNSIGNED_INT_TYPE_NAME, &[ScalarType::Int]),
+    NativeTypeConstructor::without_args(SMALL_INT_TYPE_NAME, &[ScalarType::Int]),
+    NativeTypeConstructor::without_args(UNSIGNED_SMALL_INT_TYPE_NAME, &[ScalarType::Int]),
+    NativeTypeConstructor::without_args(TINY_INT_TYPE_NAME, &[ScalarType::Boolean, ScalarType::Int]),
+    NativeTypeConstructor::without_args(UNSIGNED_TINY_INT_TYPE_NAME, &[ScalarType::Int]),
+    NativeTypeConstructor::without_args(MEDIUM_INT_TYPE_NAME, &[ScalarType::Int]),
+    NativeTypeConstructor::without_args(UNSIGNED_MEDIUM_INT_TYPE_NAME, &[ScalarType::Int]),
+    NativeTypeConstructor::without_args(BIG_INT_TYPE_NAME, &[ScalarType::BigInt]),
+    NativeTypeConstructor::without_args(UNSIGNED_BIG_INT_TYPE_NAME, &[ScalarType::BigInt]),
+    NativeTypeConstructor::with_optional_args(DECIMAL_TYPE_NAME, 2, &[ScalarType::Decimal]),
+    NativeTypeConstructor::without_args(FLOAT_TYPE_NAME, &[ScalarType::Float]),
+    NativeTypeConstructor::without_args(DOUBLE_TYPE_NAME, &[ScalarType::Float]),
+    NativeTypeConstructor::with_args(BIT_TYPE_NAME, 1, &[ScalarType::Boolean, ScalarType::Bytes]),
+    NativeTypeConstructor::with_args(CHAR_TYPE_NAME, 1, &[ScalarType::String]),
+    NativeTypeConstructor::with_args(VAR_CHAR_TYPE_NAME, 1, &[ScalarType::String]),
+    NativeTypeConstructor::with_args(BINARY_TYPE_NAME, 1, &[ScalarType::Bytes]),
+    NativeTypeConstructor::with_args(VAR_BINARY_TYPE_NAME, 1, &[ScalarType::Bytes]),
+    NativeTypeConstructor::without_args(TINY_BLOB_TYPE_NAME, &[ScalarType::Bytes]),
+    NativeTypeConstructor::without_args(BLOB_TYPE_NAME, &[ScalarType::Bytes]),
+    NativeTypeConstructor::without_args(MEDIUM_BLOB_TYPE_NAME, &[ScalarType::Bytes]),
+    NativeTypeConstructor::without_args(LONG_BLOB_TYPE_NAME, &[ScalarType::Bytes]),
+    NativeTypeConstructor::without_args(TINY_TEXT_TYPE_NAME, &[ScalarType::String]),
+    NativeTypeConstructor::without_args(TEXT_TYPE_NAME, &[ScalarType::String]),
+    NativeTypeConstructor::without_args(MEDIUM_TEXT_TYPE_NAME, &[ScalarType::String]),
+    NativeTypeConstructor::without_args(LONG_TEXT_TYPE_NAME, &[ScalarType::String]),
+    NativeTypeConstructor::without_args(DATE_TYPE_NAME, &[ScalarType::DateTime]),
+    NativeTypeConstructor::with_optional_args(TIME_TYPE_NAME, 1, &[ScalarType::DateTime]),
+    NativeTypeConstructor::with_optional_args(DATETIME_TYPE_NAME, 1, &[ScalarType::DateTime]),
+    NativeTypeConstructor::with_optional_args(TIMESTAMP_TYPE_NAME, 1, &[ScalarType::DateTime]),
+    NativeTypeConstructor::without_args(YEAR_TYPE_NAME, &[ScalarType::Int]),
+    NativeTypeConstructor::without_args(JSON_TYPE_NAME, &[ScalarType::Json]),
+];
 
-impl MySqlDatamodelConnector {
-    pub fn new(referential_integrity: ReferentialIntegrity) -> MySqlDatamodelConnector {
-        let mut capabilities = vec![
-            ConnectorCapability::RelationsOverNonUniqueCriteria,
-            ConnectorCapability::Enums,
-            ConnectorCapability::Json,
-            ConnectorCapability::MultipleIndexesWithSameName, //TODO(matthias) get rid of this
-            ConnectorCapability::AutoIncrementAllowedOnNonId,
-            ConnectorCapability::RelationFieldsInArbitraryOrder,
-            ConnectorCapability::CreateMany,
-            ConnectorCapability::WritableAutoincField,
-            ConnectorCapability::CreateSkipDuplicates,
-            ConnectorCapability::UpdateableId,
-            ConnectorCapability::JsonFilteringJsonPath,
-            ConnectorCapability::CreateManyWriteableAutoIncId,
-            ConnectorCapability::AutoIncrement,
-            ConnectorCapability::CompoundIds,
-            ConnectorCapability::AnyId,
-            ConnectorCapability::QueryRaw,
-            ConnectorCapability::NamedForeignKeys,
-            ConnectorCapability::AdvancedJsonNullability,
-        ];
+const CAPABILITIES: &[ConnectorCapability] = &[
+    ConnectorCapability::RelationsOverNonUniqueCriteria,
+    ConnectorCapability::Enums,
+    ConnectorCapability::Json,
+    ConnectorCapability::AutoIncrementAllowedOnNonId,
+    ConnectorCapability::RelationFieldsInArbitraryOrder,
+    ConnectorCapability::CreateMany,
+    ConnectorCapability::WritableAutoincField,
+    ConnectorCapability::CreateSkipDuplicates,
+    ConnectorCapability::UpdateableId,
+    ConnectorCapability::JsonFilteringJsonPath,
+    ConnectorCapability::CreateManyWriteableAutoIncId,
+    ConnectorCapability::AutoIncrement,
+    ConnectorCapability::CompoundIds,
+    ConnectorCapability::AnyId,
+    ConnectorCapability::QueryRaw,
+    ConnectorCapability::NamedForeignKeys,
+    ConnectorCapability::AdvancedJsonNullability,
+    ConnectorCapability::ForeignKeys,
+    ConnectorCapability::IndexColumnLengthPrefixing,
+    ConnectorCapability::FullTextIndex,
+];
 
-        if referential_integrity.uses_foreign_keys() {
-            capabilities.push(ConnectorCapability::ForeignKeys);
-        }
+const CONSTRAINT_SCOPES: &[ConstraintScope] = &[ConstraintScope::GlobalForeignKey, ConstraintScope::ModelKeyIndex];
 
-        let int = NativeTypeConstructor::without_args(INT_TYPE_NAME, vec![ScalarType::Int]);
-        let unsigned_int = NativeTypeConstructor::without_args(UNSIGNED_INT_TYPE_NAME, vec![ScalarType::Int]);
-        let small_int = NativeTypeConstructor::without_args(SMALL_INT_TYPE_NAME, vec![ScalarType::Int]);
-        let unsigned_small_int =
-            NativeTypeConstructor::without_args(UNSIGNED_SMALL_INT_TYPE_NAME, vec![ScalarType::Int]);
-        let tiny_int =
-            NativeTypeConstructor::without_args(TINY_INT_TYPE_NAME, vec![ScalarType::Boolean, ScalarType::Int]);
-        let unsigned_tiny_int = NativeTypeConstructor::without_args(UNSIGNED_TINY_INT_TYPE_NAME, vec![ScalarType::Int]);
-        let medium_int = NativeTypeConstructor::without_args(MEDIUM_INT_TYPE_NAME, vec![ScalarType::Int]);
-        let unsigned_medium_int =
-            NativeTypeConstructor::without_args(UNSIGNED_MEDIUM_INT_TYPE_NAME, vec![ScalarType::Int]);
-        let big_int = NativeTypeConstructor::without_args(BIG_INT_TYPE_NAME, vec![ScalarType::BigInt]);
-        let unsigned_big_int =
-            NativeTypeConstructor::without_args(UNSIGNED_BIG_INT_TYPE_NAME, vec![ScalarType::BigInt]);
-        let decimal = NativeTypeConstructor::with_optional_args(DECIMAL_TYPE_NAME, 2, vec![ScalarType::Decimal]);
-        let float = NativeTypeConstructor::without_args(FLOAT_TYPE_NAME, vec![ScalarType::Float]);
-        let double = NativeTypeConstructor::without_args(DOUBLE_TYPE_NAME, vec![ScalarType::Float]);
-        let bit = NativeTypeConstructor::with_args(BIT_TYPE_NAME, 1, vec![ScalarType::Boolean, ScalarType::Bytes]);
-        let char = NativeTypeConstructor::with_args(CHAR_TYPE_NAME, 1, vec![ScalarType::String]);
-        let var_char = NativeTypeConstructor::with_args(VAR_CHAR_TYPE_NAME, 1, vec![ScalarType::String]);
-        let binary = NativeTypeConstructor::with_args(BINARY_TYPE_NAME, 1, vec![ScalarType::Bytes]);
-        let var_binary = NativeTypeConstructor::with_args(VAR_BINARY_TYPE_NAME, 1, vec![ScalarType::Bytes]);
-        let tiny_blob = NativeTypeConstructor::without_args(TINY_BLOB_TYPE_NAME, vec![ScalarType::Bytes]);
-        let blob = NativeTypeConstructor::without_args(BLOB_TYPE_NAME, vec![ScalarType::Bytes]);
-        let medium_blob = NativeTypeConstructor::without_args(MEDIUM_BLOB_TYPE_NAME, vec![ScalarType::Bytes]);
-        let long_blob = NativeTypeConstructor::without_args(LONG_BLOB_TYPE_NAME, vec![ScalarType::Bytes]);
-        let tiny_text = NativeTypeConstructor::without_args(TINY_TEXT_TYPE_NAME, vec![ScalarType::String]);
-        let text = NativeTypeConstructor::without_args(TEXT_TYPE_NAME, vec![ScalarType::String]);
-        let medium_text = NativeTypeConstructor::without_args(MEDIUM_TEXT_TYPE_NAME, vec![ScalarType::String]);
-        let long_text = NativeTypeConstructor::without_args(LONG_TEXT_TYPE_NAME, vec![ScalarType::String]);
-        let date = NativeTypeConstructor::without_args(DATE_TYPE_NAME, vec![ScalarType::DateTime]);
-        let time = NativeTypeConstructor::with_optional_args(TIME_TYPE_NAME, 1, vec![ScalarType::DateTime]);
-        let datetime = NativeTypeConstructor::with_optional_args(DATETIME_TYPE_NAME, 1, vec![ScalarType::DateTime]);
-        let timestamp = NativeTypeConstructor::with_optional_args(TIMESTAMP_TYPE_NAME, 1, vec![ScalarType::DateTime]);
-        let year = NativeTypeConstructor::without_args(YEAR_TYPE_NAME, vec![ScalarType::Int]);
-        let json = NativeTypeConstructor::without_args(JSON_TYPE_NAME, vec![ScalarType::Json]);
-
-        let constructors: Vec<NativeTypeConstructor> = vec![
-            int,
-            unsigned_int,
-            small_int,
-            unsigned_small_int,
-            tiny_int,
-            unsigned_tiny_int,
-            medium_int,
-            unsigned_medium_int,
-            big_int,
-            unsigned_big_int,
-            decimal,
-            float,
-            double,
-            bit,
-            char,
-            var_char,
-            binary,
-            var_binary,
-            tiny_blob,
-            blob,
-            medium_blob,
-            long_blob,
-            tiny_text,
-            text,
-            medium_text,
-            long_text,
-            date,
-            time,
-            datetime,
-            timestamp,
-            year,
-            json,
-        ];
-
-        MySqlDatamodelConnector {
-            capabilities,
-            constructors,
-            referential_integrity,
-            constraint_violation_scopes: vec![ConstraintScope::GlobalForeignKey, ConstraintScope::ModelKeyIndex],
-        }
-    }
-}
+pub struct MySqlDatamodelConnector;
 
 const SCALAR_TYPE_DEFAULTS: &[(ScalarType, MySqlType)] = &[
     (ScalarType::Int, MySqlType::Int),
@@ -190,23 +137,18 @@ impl Connector for MySqlDatamodelConnector {
         "MySQL"
     }
 
-    fn capabilities(&self) -> &[ConnectorCapability] {
-        &self.capabilities
+    fn capabilities(&self) -> &'static [ConnectorCapability] {
+        CAPABILITIES
     }
 
     fn constraint_name_length(&self) -> usize {
         64
     }
 
-    fn referential_actions(&self) -> BitFlags<ReferentialAction> {
+    fn referential_actions(&self, referential_integrity: &ReferentialIntegrity) -> BitFlags<ReferentialAction> {
         use ReferentialAction::*;
 
-        self.referential_integrity
-            .allowed_referential_actions(Restrict | Cascade | SetNull | NoAction | SetDefault)
-    }
-
-    fn emulates_referential_actions(&self) -> bool {
-        matches!(self.referential_integrity, ReferentialIntegrity::Prisma)
+        referential_integrity.allowed_referential_actions(Restrict | Cascade | SetNull | NoAction | SetDefault)
     }
 
     fn scalar_type_for_native_type(&self, native_type: serde_json::Value) -> ScalarType {
@@ -312,12 +254,22 @@ impl Connector for MySqlDatamodelConnector {
 
     fn validate_model(&self, model: &Model, errors: &mut Vec<ConnectorError>) {
         for index_definition in model.indices.iter() {
-            let fields = index_definition.fields.iter().map(|f| model.find_field(f).unwrap());
-            for f in fields {
+            let fields = index_definition
+                .fields
+                .iter()
+                .map(|f| model.find_field(&f.name).unwrap())
+                .zip(index_definition.fields.iter());
+
+            for (f, definition) in fields {
                 if let FieldType::Scalar(_, _, Some(native_type)) = f.field_type() {
                     let native_type_name = native_type.name.as_str();
 
                     if NATIVE_TYPES_THAT_CAN_NOT_BE_USED_IN_KEY_SPECIFICATION.contains(&native_type_name) {
+                        // Length defined, so we allow the index.
+                        if definition.length.is_some() {
+                            continue;
+                        }
+
                         if index_definition.is_unique() {
                             errors.push(
                                 self.native_instance_error(native_type.clone())
@@ -338,10 +290,17 @@ impl Connector for MySqlDatamodelConnector {
 
         if let Some(pk) = &model.primary_key {
             for id_field in pk.fields.iter() {
-                let field = model.find_field(id_field).unwrap();
+                let field = model.find_field(&id_field.name).unwrap();
+
                 if let FieldType::Scalar(_, _, Some(native_type)) = field.field_type() {
                     let native_type_name = native_type.name.as_str();
+
                     if NATIVE_TYPES_THAT_CAN_NOT_BE_USED_IN_KEY_SPECIFICATION.contains(&native_type_name) {
+                        // Length defined, so we allow the index.
+                        if id_field.length.is_some() {
+                            continue;
+                        }
+
                         errors.push(
                             self.native_instance_error(native_type.clone())
                                 .new_incompatible_native_type_with_id(),
@@ -354,12 +313,12 @@ impl Connector for MySqlDatamodelConnector {
         }
     }
 
-    fn constraint_violation_scopes(&self) -> &[ConstraintScope] {
-        &self.constraint_violation_scopes
+    fn constraint_violation_scopes(&self) -> &'static [ConstraintScope] {
+        CONSTRAINT_SCOPES
     }
 
-    fn available_native_type_constructors(&self) -> &[NativeTypeConstructor] {
-        &self.constructors
+    fn available_native_type_constructors(&self) -> &'static [NativeTypeConstructor] {
+        NATIVE_TYPE_CONSTRUCTORS
     }
 
     fn parse_native_type(&self, name: &str, args: Vec<String>) -> Result<NativeTypeInstance, ConnectorError> {
@@ -449,7 +408,7 @@ impl Connector for MySqlDatamodelConnector {
         }
 
         if let Some(constructor) = self.find_native_type_constructor(constructor_name) {
-            Ok(NativeTypeInstance::new(constructor.name.as_str(), args, &native_type))
+            Ok(NativeTypeInstance::new(constructor.name, args, &native_type))
         } else {
             Err(self.native_str_error(constructor_name).native_type_name_unknown())
         }

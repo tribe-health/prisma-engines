@@ -5,72 +5,44 @@ use datamodel_connector::{
     Connector, ConnectorCapability, ReferentialIntegrity,
 };
 use dml::{
-    default_value::DefaultKind, field::FieldType, native_type_constructor::NativeTypeConstructor,
-    native_type_instance::NativeTypeInstance, relation_info::ReferentialAction, traits::WithDatabaseName,
+    default_value::DefaultKind, field::FieldType, native_type_instance::NativeTypeInstance,
+    relation_info::ReferentialAction, traits::WithDatabaseName,
 };
 use enumflags2::BitFlags;
 use mongodb_types::*;
 use native_types::MongoDbType;
 use std::result::Result as StdResult;
 
+const CAPABILITIES: &[ConnectorCapability] = &[
+    ConnectorCapability::RelationsOverNonUniqueCriteria,
+    ConnectorCapability::Json,
+    ConnectorCapability::Enums,
+    ConnectorCapability::RelationFieldsInArbitraryOrder,
+    ConnectorCapability::CreateMany,
+    ConnectorCapability::ScalarLists,
+    ConnectorCapability::InsensitiveFilters,
+    ConnectorCapability::CompositeTypes,
+];
+
 type Result<T> = std::result::Result<T, ConnectorError>;
 
-pub struct MongoDbDatamodelConnector {
-    capabilities: Vec<ConnectorCapability>,
-    native_types: Vec<NativeTypeConstructor>,
-    referential_integrity: ReferentialIntegrity,
-}
-
-impl MongoDbDatamodelConnector {
-    pub fn new() -> Self {
-        let capabilities = vec![
-            ConnectorCapability::RelationsOverNonUniqueCriteria,
-            ConnectorCapability::Json,
-            ConnectorCapability::Enums,
-            ConnectorCapability::MultipleIndexesWithSameName,
-            ConnectorCapability::RelationFieldsInArbitraryOrder,
-            ConnectorCapability::CreateMany,
-            ConnectorCapability::ScalarLists,
-            ConnectorCapability::InsensitiveFilters,
-            ConnectorCapability::CompositeTypes,
-        ];
-
-        let native_types = mongodb_types::available_types();
-
-        Self {
-            capabilities,
-            native_types,
-            referential_integrity: ReferentialIntegrity::Prisma,
-        }
-    }
-}
-
-impl Default for MongoDbDatamodelConnector {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+pub struct MongoDbDatamodelConnector;
 
 impl Connector for MongoDbDatamodelConnector {
     fn name(&self) -> &str {
         "MongoDB"
     }
 
-    fn capabilities(&self) -> &[ConnectorCapability] {
-        &self.capabilities
+    fn capabilities(&self) -> &'static [ConnectorCapability] {
+        CAPABILITIES
     }
 
     fn constraint_name_length(&self) -> usize {
         127
     }
 
-    fn referential_actions(&self) -> BitFlags<ReferentialAction> {
-        self.referential_integrity
-            .allowed_referential_actions(BitFlags::empty())
-    }
-
-    fn emulates_referential_actions(&self) -> bool {
-        true
+    fn referential_actions(&self, referential_integrity: &ReferentialIntegrity) -> BitFlags<ReferentialAction> {
+        referential_integrity.allowed_referential_actions(BitFlags::empty())
     }
 
     fn validate_field(&self, field: &dml::field::Field, errors: &mut Vec<ConnectorError>) {
@@ -96,7 +68,7 @@ impl Connector for MongoDbDatamodelConnector {
 
             // singular id
             let field_name = pk.fields.first().unwrap();
-            let field = model.find_scalar_field(field_name.as_str()).unwrap();
+            let field = model.find_scalar_field(field_name.name.as_str()).unwrap();
 
             // The _id name check is superfluous because it's not a valid schema field at the moment.
             if field.name != "_id" {
@@ -134,8 +106,8 @@ impl Connector for MongoDbDatamodelConnector {
         }
     }
 
-    fn available_native_type_constructors(&self) -> &[dml::native_type_constructor::NativeTypeConstructor] {
-        &self.native_types
+    fn available_native_type_constructors(&self) -> &'static [dml::native_type_constructor::NativeTypeConstructor] {
+        NATIVE_TYPE_CONSTRUCTORS
     }
 
     fn default_native_type_for_scalar_type(&self, scalar_type: &dml::scalars::ScalarType) -> serde_json::Value {
@@ -184,5 +156,13 @@ impl Connector for MongoDbDatamodelConnector {
         }
 
         Ok(())
+    }
+
+    fn default_referential_integrity(&self) -> ReferentialIntegrity {
+        ReferentialIntegrity::Prisma
+    }
+
+    fn allowed_referential_integrity_settings(&self) -> enumflags2::BitFlags<ReferentialIntegrity> {
+        ReferentialIntegrity::Prisma.into()
     }
 }

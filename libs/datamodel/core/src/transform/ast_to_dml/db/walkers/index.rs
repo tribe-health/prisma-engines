@@ -5,7 +5,7 @@ use crate::{
 };
 use std::borrow::Cow;
 
-use super::{ModelWalker, ScalarFieldWalker};
+use super::{ModelWalker, ScalarFieldAttributeWalker, ScalarFieldWalker};
 
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
@@ -24,9 +24,18 @@ impl<'ast, 'db> IndexWalker<'ast, 'db> {
 
         let model = self.db.walk_model(self.model_id);
         let model_db_name = model.final_database_name();
-        let field_db_names: Vec<&str> = model.get_field_db_names(&self.index_attribute.fields).collect();
+        let field_db_names: Vec<&str> = model
+            .get_field_db_names(
+                &self
+                    .index_attribute
+                    .fields
+                    .iter()
+                    .map(|f| f.field_id)
+                    .collect::<Vec<_>>(),
+            )
+            .collect();
 
-        if self.index_attribute.is_unique {
+        if self.index_attribute.is_unique() {
             ConstraintNames::unique_index_name(model_db_name, &field_db_names, self.db.active_connector()).into()
         } else {
             ConstraintNames::non_unique_index_name(model_db_name, &field_db_names, self.db.active_connector()).into()
@@ -55,9 +64,24 @@ impl<'ast, 'db> IndexWalker<'ast, 'db> {
             .iter()
             .map(move |field_id| ScalarFieldWalker {
                 model_id: self.model_id,
-                field_id: *field_id,
+                field_id: field_id.field_id,
                 db: self.db,
-                scalar_field: &self.db.types.scalar_fields[&(self.model_id, *field_id)],
+                scalar_field: &self.db.types.scalar_fields[&(self.model_id, field_id.field_id)],
+            })
+    }
+
+    pub(crate) fn scalar_field_attributes(
+        self,
+    ) -> impl ExactSizeIterator<Item = ScalarFieldAttributeWalker<'ast, 'db>> + 'db {
+        self.attribute()
+            .fields
+            .iter()
+            .enumerate()
+            .map(move |(field_arg_id, _)| ScalarFieldAttributeWalker {
+                model_id: self.model_id,
+                fields: &self.attribute().fields,
+                db: self.db,
+                field_arg_id,
             })
     }
 
@@ -69,7 +93,7 @@ impl<'ast, 'db> IndexWalker<'ast, 'db> {
     }
 
     pub(crate) fn is_unique(self) -> bool {
-        self.index_attribute.is_unique
+        self.index_attribute.is_unique()
     }
 
     pub(crate) fn model(self) -> ModelWalker<'ast, 'db> {

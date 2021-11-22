@@ -46,7 +46,6 @@ pub struct Function {
 #[serde(rename_all = "camelCase")]
 pub struct Model {
     pub name: String,
-    pub is_embedded: bool,
     pub db_name: Option<String>,
     pub fields: Vec<Field>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -65,6 +64,7 @@ pub struct UniqueIndex {
     pub fields: Vec<String>,
 }
 
+//TODO(extended indices) add field options here
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrimaryKey {

@@ -156,19 +156,26 @@ start-mongodb4-single:
 start-mongodb5-single:
 	docker-compose -f docker-compose.yml up -d --remove-orphans mongo5-single
 
-start-mongodb4:
-	docker-compose -f docker-compose.yml up -d --remove-orphans mongo4
+start-mongodb_4_2:
+	docker-compose -f docker-compose.yml up -d --remove-orphans mongo42
 
-dev-mongodb4: start-mongodb4
+start-mongodb_4_4:
+	docker-compose -f docker-compose.yml up -d --remove-orphans mongo44
+
+dev-mongodb_4_4: start-mongodb_4_4
 	echo 'mongodb' > current_connector
-	cp $(CONFIG_PATH)/mongodb4 $(CONFIG_FILE)
+	cp $(CONFIG_PATH)/mongodb44 $(CONFIG_FILE)
 
-start-mongodb5:
+start-mongodb_5:
 	docker-compose -f docker-compose.yml up -d --remove-orphans mongo5
 
-dev-mongodb5: start-mongodb5
+dev-mongodb_5: start-mongodb_5
 	echo 'mongodb' > current_connector
 	cp $(CONFIG_PATH)/mongodb5 $(CONFIG_FILE)
+
+dev-mongodb_4_2: start-mongodb_4_2
+	echo 'mongodb' > current_connector
+	cp $(CONFIG_PATH)/mongodb42 $(CONFIG_FILE)
 
 start-vitess_5_7:
 	docker-compose -f docker-compose.yml up -d --remove-orphans vitess-test-5_7 vitess-shadow-5_7
@@ -190,6 +197,9 @@ dev-vitess_8_0: start-vitess_8_0
 
 qe:
 	cargo run --bin query-engine -- --enable-playground --enable-raw-queries
+
+qe-dmmf:
+	cargo run --bin query-engine -- cli dmmf > dmmf.json
 
 push-schema:
 	cargo run --bin test-cli -- schema-push $(DEV_SCHEMA_FILE) --force
@@ -213,3 +223,8 @@ use-local-query-engine:
 	cargo build --release
 	cp target/release/query-engine $(PRISMA2_BINARY_PATH)/runtime/
 	cp target/release/query-engine $(PRISMA2_BINARY_PATH)/query-engine-darwin
+
+
+## OpenTelemetry
+otel:
+	docker-compose up --remove-orphans otel

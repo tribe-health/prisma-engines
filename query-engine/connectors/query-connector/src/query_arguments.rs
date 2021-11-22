@@ -73,7 +73,7 @@ impl QueryArguments {
     pub fn contains_null_cursor(&self) -> bool {
         self.cursor.is_some()
             && self.order_by.iter().any(|o| match o {
-                OrderBy::Scalar(o) => !o.field.is_required,
+                OrderBy::Scalar(o) => !o.field.is_required(),
                 OrderBy::Aggregation(_) => false,
                 OrderBy::Relevance(_) => false,
             })
@@ -151,6 +151,13 @@ impl QueryArguments {
             OrderBy::Aggregation(_) => true,
             OrderBy::Relevance(_) => true,
         })
+    }
+
+    pub fn has_unbatchable_filters(&self) -> bool {
+        match &self.filter {
+            None => false,
+            Some(filter) => !filter.can_batch(),
+        }
     }
 
     pub fn should_batch(&self, chunk_size: usize) -> bool {

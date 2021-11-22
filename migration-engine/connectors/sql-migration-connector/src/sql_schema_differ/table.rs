@@ -2,7 +2,7 @@ use super::{differ_database::DifferDatabase, foreign_keys_match};
 use crate::pair::Pair;
 use sql_schema_describer::{
     walkers::{ColumnWalker, ForeignKeyWalker, IndexWalker, TableWalker},
-    PrimaryKey,
+    PrimaryKey, TableId,
 };
 
 pub(crate) struct TableDiffer<'a, 'b> {
@@ -81,7 +81,11 @@ impl<'schema, 'b> TableDiffer<'schema, 'b> {
             // We do not rename them for now.
             let number_of_identical_indexes = self
                 .previous_indexes()
-                .filter(|right| left.column_names() == right.column_names() && left.index_type() == right.index_type())
+                .filter(|right| {
+                    left.column_names().len() == right.column_names().len()
+                        && left.column_names().zip(right.column_names()).all(|(a, b)| a == b)
+                        && left.index_type() == right.index_type()
+                })
                 .count();
 
             number_of_identical_indexes == 1
@@ -121,7 +125,7 @@ impl<'schema, 'b> TableDiffer<'schema, 'b> {
                 previous_pk
                     .columns
                     .iter()
-                    .any(|pk_col| pk_col == columns.previous.name())
+                    .any(|pk_col| pk_col.name() == columns.previous.name())
             })
             .any(|columns| self.db.column_changes_for_walkers(columns).type_changed())
     }
@@ -149,9 +153,25 @@ impl<'schema, 'b> TableDiffer<'schema, 'b> {
     pub(super) fn next(&self) -> &TableWalker<'schema> {
         self.tables.next()
     }
+
+    pub(super) fn table_ids(&self) -> Pair<TableId> {
+        self.tables.map(|t| t.table_id())
+    }
 }
 
 /// Compare two SQL indexes and return whether they only differ by name.
 fn indexes_match(first: &IndexWalker<'_>, second: &IndexWalker<'_>) -> bool {
-    first.column_names() == second.column_names() && first.index_type() == second.index_type()
+    let left_cols = first.columns();
+    let right_cols = second.columns();
+
+    left_cols.len() == right_cols.len()
+        && left_cols.zip(right_cols).all(|(a, b)| {
+            let names_match = a.as_column().name() == b.as_column().name();
+            let lengths_match = a.length() == b.length();
+            let orders_match = a.sort_order() == b.sort_order();
+
+            names_match && lengths_match && orders_match
+        })
+        && first.index_type() == second.index_type()
+        && first.algorithm() == second.algorithm()
 }

@@ -296,8 +296,8 @@ fn handle_one_to_one(
 ) -> QueryGraphBuilderResult<()> {
     let parent_is_create = utils::node_is_create(graph, &parent_node);
     let child_relation_field = parent_relation_field.related_field();
-    let parent_side_required = parent_relation_field.is_required;
-    let child_side_required = child_relation_field.is_required;
+    let parent_side_required = parent_relation_field.is_required();
+    let child_side_required = child_relation_field.is_required();
     let relation_inlined_parent = parent_relation_field.relation_is_inlined_in_parent();
 
     let parent_link = parent_relation_field.linking_fields();
@@ -328,17 +328,23 @@ fn handle_one_to_one(
 
     // If the relation is inlined on the parent, we swap the create and the parent to have the child ID for inlining.
     // Swapping changes the extraction model identifier as well.
-    let (extractor, assimilator) = if relation_inlined_parent {
+    let ((extractor_model, extractor), (assimilator_model, assimilator)) = if relation_inlined_parent {
         // We need to swap the read node and the parent because the inlining is done in the parent, and we need to fetch the ID first.
         graph.mark_nodes(&parent_node, &create_node);
-        (child_link.clone(), parent_link)
+        (
+            (child_relation_field.model(), child_link.clone()),
+            (parent_relation_field.model(), parent_link),
+        )
     } else {
-        (parent_link, child_link.clone())
+        (
+            (parent_relation_field.model(), parent_link),
+            (child_relation_field.model(), child_link.clone()),
+        )
     };
 
     let relation_name = parent_relation_field.relation().name.clone();
-    let parent_model_name = extractor.model().name.clone();
-    let child_model_name = assimilator.model().name.clone();
+    let parent_model_name = extractor_model.name.clone();
+    let child_model_name = assimilator_model.name.clone();
 
     graph.create_edge(
         &parent_node,
