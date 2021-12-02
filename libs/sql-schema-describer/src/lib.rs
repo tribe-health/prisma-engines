@@ -225,12 +225,14 @@ impl Table {
 }
 
 /// The type of an index.
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
 pub enum IndexType {
     /// Unique type.
     Unique,
     /// Normal type.
     Normal,
+    /// Fulltext type.
+    Fulltext,
 }
 
 impl IndexType {
@@ -322,6 +324,10 @@ pub struct Index {
 impl Index {
     pub fn is_unique(&self) -> bool {
         self.tpe == IndexType::Unique
+    }
+
+    pub fn is_fulltext(&self) -> bool {
+        self.tpe == IndexType::Fulltext
     }
 
     pub fn column_names(&self) -> impl ExactSizeIterator<Item = &str> + '_ {
