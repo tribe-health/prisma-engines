@@ -1,20 +1,17 @@
 mod name;
 
+use mongodb_schema_describer::{IndexFieldProperty, IndexWalker};
 pub(crate) use name::Name;
 
 use super::{field_type::FieldType, CompositeTypeDepth};
 use convert_case::{Case, Casing};
 use datamodel::{
-    common::preview_features::PreviewFeature, CompositeType, CompositeTypeField, Datamodel, DefaultValue, Field,
-    IndexDefinition, IndexField, IndexType, Model, NativeTypeInstance, PrimaryKeyDefinition, PrimaryKeyField,
-    ScalarField, ScalarType, SortOrder, ValueGenerator, WithDatabaseName,
+    CompositeType, CompositeTypeField, Datamodel, DefaultValue, Field, IndexDefinition, IndexField, IndexType, Model,
+    NativeTypeInstance, PrimaryKeyDefinition, PrimaryKeyField, ScalarField, ScalarType, SortOrder, ValueGenerator,
+    WithDatabaseName,
 };
-use enumflags2::BitFlags;
 use introspection_connector::Warning;
-use mongodb::{
-    bson::{Bson, Document},
-    IndexModel,
-};
+use mongodb::bson::{Bson, Document};
 use native_types::MongoDbType;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -23,7 +20,6 @@ use std::{
     cmp::Ordering,
     collections::{BTreeMap, HashMap},
     fmt,
-    ops::Deref,
 };
 
 pub(super) const SAMPLE_SIZE: i32 = 1000;
@@ -32,25 +28,23 @@ static RESERVED_NAMES: &[&str] = &["PrismaClient"];
 
 /// Statistical data from a MongoDB database for determining a Prisma data
 /// model.
-#[derive(Debug, Default)]
-pub(super) struct Statistics {
+#[derive(Default)]
+pub(super) struct Statistics<'a> {
     /// (model_name, field_name) -> type percentages
     fields: BTreeMap<(Name, String), FieldSampler>,
     /// model_name -> document count
     models: HashMap<Name, usize>,
     /// model_name -> indices
-    indices: BTreeMap<String, Vec<IndexModel>>,
+    indices: BTreeMap<String, Vec<IndexWalker<'a>>>,
     /// How deep we travel in nested composite types until switching to Json. None will always use
     /// Json, Some(-1) will never switch to Json.
     composite_type_depth: CompositeTypeDepth,
-    preview_features: BitFlags<PreviewFeature>,
 }
 
-impl Statistics {
-    pub(super) fn new(composite_type_depth: CompositeTypeDepth, preview_features: BitFlags<PreviewFeature>) -> Self {
+impl<'a> Statistics<'a> {
+    pub(super) fn new(composite_type_depth: CompositeTypeDepth) -> Self {
         Self {
             composite_type_depth,
-            preview_features,
             ..Default::default()
         }
     }
@@ -65,7 +59,7 @@ impl Statistics {
     }
 
     /// Track an index for the given model.
-    pub(super) fn track_index(&mut self, model_name: &str, index: IndexModel) {
+    pub(super) fn track_index(&mut self, model_name: &str, index: IndexWalker<'a>) {
         let indexes = self.indices.entry(model_name.to_string()).or_default();
         indexes.push(index);
     }
@@ -168,7 +162,7 @@ impl Statistics {
             }
         }
 
-        add_indices_to_models(&mut models, &mut indices, self.preview_features);
+        add_indices_to_models(&mut models, &mut indices);
 
         for (_, model) in models.into_iter() {
             data_model.add_model(model);
@@ -360,7 +354,6 @@ fn new_model(model_name: &str) -> Model {
     let primary_key = PrimaryKeyDefinition {
         name: None,
         db_name: None,
-        //TODO(extended indexes) If the flag is enabled this should return the sort, otherwise not
         fields: vec![PrimaryKeyField {
             name: "id".to_string(),
             sort_order: None,
@@ -410,79 +403,44 @@ fn new_model(model_name: &str) -> Model {
     }
 }
 
-fn add_indices_to_models(
-    models: &mut BTreeMap<String, Model>,
-    indices: &mut BTreeMap<String, Vec<IndexModel>>,
-    preview_features: BitFlags<PreviewFeature>,
-) {
+fn add_indices_to_models(models: &mut BTreeMap<String, Model>, indices: &mut BTreeMap<String, Vec<IndexWalker<'_>>>) {
     for (model_name, model) in models.iter_mut() {
         for index in indices.remove(model_name).into_iter().flat_map(|i| i.into_iter()) {
-            let defined_on_field = index.keys.len() == 1;
+            let defined_on_field = index.fields().len() == 1;
 
-            // Implicit primary key
-            if matches!(index.keys.keys().next().map(Deref::deref), Some("_id")) {
-                continue;
-            }
-
-            // Partial index
-            if index
-                .options
-                .as_ref()
-                .and_then(|opts| opts.partial_filter_expression.as_ref())
-                .is_some()
-            {
-                continue;
-            }
-
-            // Points to a field that does not exist (yet).
-            if !index.keys.keys().all(|k| {
+            if !index.fields().all(|indf| {
                 model
                     .fields
                     .iter()
-                    .any(|f| f.name() == k || f.database_name() == Some(k))
+                    .any(|mf| mf.name() == indf.name() || mf.database_name() == Some(indf.name()))
             }) {
                 continue;
             }
 
-            let tpe = index
-                .options
-                .as_ref()
-                .and_then(|opts| opts.unique)
-                .map(|uniq| if uniq { IndexType::Unique } else { IndexType::Normal })
-                .unwrap_or(IndexType::Normal);
-
-            let db_name = index.options.and_then(|opts| opts.name);
-
             let fields = index
-                .keys
-                .into_iter()
-                //TODO(extended indices) is the value here always the sort order? the driver docs are unclear
-                // If the flag is enabled this should return the sort, otherwise not
-                .map(|(k, v)| {
-                    let field_name = match sanitize_string(&k) {
-                        Some(sanitized) => sanitized,
-                        None => k,
-                    };
-
-                    let sort_order = match v.as_i32() {
-                        _ if !preview_features.contains(PreviewFeature::ExtendedIndexes) => None,
-                        Some(-1) => Some(SortOrder::Desc),
-                        _ => Some(SortOrder::Asc),
-                    };
-
-                    IndexField {
-                        name: field_name,
-                        sort_order,
-                        length: None,
-                    }
+                .fields()
+                .map(|f| IndexField {
+                    name: sanitize_string(f.name()).unwrap_or_else(|| f.name().to_string()),
+                    sort_order: match f.property {
+                        IndexFieldProperty::Text => None,
+                        IndexFieldProperty::Ascending => Some(SortOrder::Asc),
+                        IndexFieldProperty::Descending => Some(SortOrder::Desc),
+                    },
+                    length: None,
                 })
                 .collect();
+
+            let tpe = match index.r#type() {
+                mongodb_schema_describer::IndexType::Normal => IndexType::Normal,
+                mongodb_schema_describer::IndexType::Unique => IndexType::Unique,
+                mongodb_schema_describer::IndexType::Fulltext => IndexType::Fulltext,
+            };
 
             model.add_index(IndexDefinition {
                 fields,
                 tpe,
                 defined_on_field,
-                db_name,
+                db_name: Some(index.name().to_string()),
                 name: None,
                 algorithm: None,
             });

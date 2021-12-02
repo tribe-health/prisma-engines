@@ -1,8 +1,5 @@
-use crate::{
-    migration::{MongoDbMigration, MongoDbMigrationStep},
-    schema::{CollectionId, IndexId, IndexWalker, MongoSchema},
-};
-use mongodb::bson;
+use crate::migration::{MongoDbMigration, MongoDbMigrationStep};
+use mongodb_schema_describer::{CollectionId, IndexField, IndexId, IndexWalker, MongoSchema};
 use std::collections::BTreeMap;
 
 pub(crate) fn diff(previous: MongoSchema, next: MongoSchema) -> MongoDbMigration {
@@ -113,10 +110,44 @@ impl<'a> DifferDatabase<'a> {
 }
 
 fn indexes_are_different(previous: IndexWalker<'_>, next: IndexWalker<'_>) -> bool {
-    // We don't compare names here because we assume it has been done earlier.
-    previous.is_unique() != next.is_unique() || !keys_match(previous.keys(), next.keys())
+    // sigh
+    if previous.is_fulltext() && next.is_fulltext() {
+        let is_fts = |v: &&IndexField| v.is_text();
+
+        let previous_heads: Vec<_> = previous.fields().take_while(|field| !is_fts(field)).collect();
+        let next_heads: Vec<_> = next.fields().take_while(|field| !is_fts(field)).collect();
+
+        // the middles will come in a wrong order from the database. We must be able to compare
+        // them as equal no matter the order, because the generated index is not per field, but to
+        // an abstract `$text` field that just holds data from the text columns.
+        let mut previous_middles: Vec<_> = previous.fields().take_while(is_fts).collect();
+        previous_middles.sort_by(|left, right| left.name().cmp(right.name()));
+
+        let mut next_middles: Vec<_> = next.fields().take_while(is_fts).collect();
+        next_middles.sort_by(|left, right| left.name().cmp(right.name()));
+
+        let previous_tails: Vec<_> = previous
+            .fields()
+            .skip_while(|field| !is_fts(field))
+            .skip_while(is_fts)
+            .collect();
+
+        let next_tails: Vec<_> = next
+            .fields()
+            .skip_while(|field| !is_fts(field))
+            .skip_while(is_fts)
+            .collect();
+
+        previous_heads != next_heads || previous_middles != next_middles || previous_tails != next_tails
+    } else {
+        // We don't compare names here because we assume it has been done earlier.
+        previous.r#type() != next.r#type() || !keys_match(previous.fields(), next.fields())
+    }
 }
 
-fn keys_match(previous: &bson::Document, next: &bson::Document) -> bool {
-    previous.len() == next.len() && previous.iter().zip(next.iter()).all(|(prev, next)| prev == next)
+fn keys_match<'schema, T>(previous: T, next: T) -> bool
+where
+    T: ExactSizeIterator<Item = &'schema IndexField> + 'schema,
+{
+    previous.len() == next.len() && previous.zip(next).all(|(prev, next)| prev == next)
 }
