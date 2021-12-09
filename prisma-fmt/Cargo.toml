@@ -2,12 +2,7 @@
 name = "prisma-fmt"
 version = "0.1.0"
 authors = ["Emanuel Joebstl <emanuel.joebstl@gmail.com>"]
-edition = "2018"
-
-# crate-type for wasm builds.
-# Commented out because it fails binary builds on linux-musl (Alpine).
-# [lib]
-# crate-type = ["cdylib"]
+edition = "2021"
 
 [dependencies]
 datamodel = { path = "../libs/datamodel/core" }
@@ -16,6 +11,10 @@ serde = { version = "1.0.90", features = ["derive"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 structopt = "0.3"
+
+[dev-dependencies]
+expect-test = "1"
+indoc = "1"
 
 [features]
 # sigh please don't ask :(

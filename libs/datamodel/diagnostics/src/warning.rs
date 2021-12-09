@@ -1,5 +1,4 @@
-use crate::helper::pretty_print;
-use crate::Span;
+use crate::{helper::pretty_print, Span};
 use thiserror::Error;
 
 /// Enum for different warnings which can happen during parsing or validation.
@@ -9,6 +8,8 @@ use thiserror::Error;
 pub enum DatamodelWarning {
     #[error("Preview feature \"{}\" is deprecated. The functionality can be used without specifying it as a preview feature.", preview_feature)]
     DeprecatedPreviewFeature { preview_feature: String, span: Span },
+    #[error("Type aliases are an undocumented feature that is getting deprecated. Please chime in in the issue if you need it: https://github.com/prisma/prisma/issues/9939")]
+    DeprecatedTypeAlias { span: Span },
 }
 
 impl DatamodelWarning {
@@ -22,6 +23,7 @@ impl DatamodelWarning {
     pub fn span(&self) -> Span {
         match self {
             DatamodelWarning::DeprecatedPreviewFeature { span, .. } => *span,
+            DatamodelWarning::DeprecatedTypeAlias { span } => *span,
         }
     }
 

@@ -1,14 +1,12 @@
-use crate::common::constraint_names::ConstraintNames;
-use crate::common::preview_features::PreviewFeature;
-use crate::common::RelationNames;
-use crate::transform::dml_to_ast::LowerDmlToAst;
 use crate::{
     ast::{self, Attribute, Span},
-    dml, Datasource, Field, Ignorable, SortOrder,
+    common::{constraint_names::ConstraintNames, preview_features::PreviewFeature, RelationNames},
+    dml,
+    transform::dml_to_ast::LowerDmlToAst,
+    Datasource, Field, Ignorable, SortOrder,
 };
-use ::dml::traits::WithName;
+use ::dml::{prisma_value, traits::WithName, PrismaValue};
 use datamodel_connector::{Connector, EmptyDatamodelConnector};
-use prisma_value::PrismaValue;
 
 impl<'a> LowerDmlToAst<'a> {
     /// Internal: Lowers a field's arity.
@@ -277,13 +275,12 @@ impl<'a> LowerDmlToAst<'a> {
             PrismaValue::Uuid(val) => Self::lower_string(val),
             PrismaValue::Json(val) => Self::lower_string(val),
             PrismaValue::List(vec) => ast::Expression::Array(
-                vec.iter()
-                    .map(|pv| LowerDmlToAst::<'a>::lower_prisma_value(pv))
-                    .collect(),
+                vec.iter().map(LowerDmlToAst::<'a>::lower_prisma_value).collect(),
                 ast::Span::empty(),
             ),
             PrismaValue::Xml(val) => ast::Expression::StringValue(val.to_string(), ast::Span::empty()),
             PrismaValue::Bytes(b) => ast::Expression::StringValue(prisma_value::encode_bytes(b), ast::Span::empty()),
+            PrismaValue::Object(_) => unreachable!(), // There's no concept of object values in the PSL right now.
         }
     }
 }
