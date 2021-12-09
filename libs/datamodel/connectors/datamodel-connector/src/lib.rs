@@ -1,17 +1,20 @@
 #![deny(rust_2018_idioms, unsafe_code)]
 
-pub mod connector_error;
+pub mod constraint_names;
 pub mod helper;
+pub mod walker_ext_traits;
 
 mod empty_connector;
 mod referential_integrity;
 
+pub use diagnostics::connector_error;
 pub use empty_connector::EmptyDatamodelConnector;
+pub use parser_database;
 pub use referential_integrity::ReferentialIntegrity;
 
 use crate::connector_error::{ConnectorError, ConnectorErrorFactory, ErrorKind};
 use dml::{
-    model::Model, native_type_constructor::NativeTypeConstructor, native_type_instance::NativeTypeInstance,
+    native_type_constructor::NativeTypeConstructor, native_type_instance::NativeTypeInstance,
     relation_info::ReferentialAction, scalars::ScalarType,
 };
 use enumflags2::BitFlags;
@@ -67,11 +70,10 @@ pub trait Connector: Send + Sync {
         self.referential_actions(integrity).contains(action)
     }
 
-    fn validate_field_default(
+    fn validate_field_default_without_native_type(
         &self,
         _field_name: &str,
         _scalar_type: &ScalarType,
-        _native_type: Option<&NativeTypeInstance>,
         _default: Option<&dml::default_value::DefaultValue>,
         _errors: &mut Vec<ConnectorError>,
     ) {
@@ -86,7 +88,7 @@ pub trait Connector: Send + Sync {
     ) {
     }
 
-    fn validate_model(&self, _: &Model, _: &mut Vec<ConnectorError>) {}
+    fn validate_model(&self, _model: parser_database::walkers::ModelWalker<'_, '_>, _: &mut Vec<ConnectorError>) {}
 
     /// The scopes in which a constraint name should be validated. If empty, doesn't check for name
     /// clashes in the validation phase.
