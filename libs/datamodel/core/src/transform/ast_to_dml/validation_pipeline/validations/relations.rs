@@ -216,7 +216,10 @@ pub(super) fn cycles<'ast, 'db>(relation: CompleteInlineRelationWalker<'ast, 'db
     if !ctx
         .connector
         .has_capability(ConnectorCapability::ReferenceCycleDetection)
-        || ctx.referential_integrity.is_prisma()
+        && ctx
+            .datasource
+            .map(|ds| ds.referential_integrity().uses_foreign_keys())
+            .unwrap_or(true)
     {
         return;
     }
@@ -460,14 +463,16 @@ fn cascade_error_with_default_values(
         (Some(on_delete), Some(on_update)) => {
             format!(
                 "{} (Implicit default `onDelete`: `{}`, and `onUpdate`: `{}`)",
-                msg, on_delete, on_update
+                msg,
+                on_delete.as_str(),
+                on_update.as_str()
             )
         }
         (Some(on_delete), None) => {
-            format!("{} (Implicit default `onDelete`: `{}`)", msg, on_delete)
+            format!("{} (Implicit default `onDelete`: `{}`)", msg, on_delete.as_str())
         }
         (None, Some(on_update)) => {
-            format!("{} (Implicit default `onUpdate`: `{}`)", msg, on_update)
+            format!("{} (Implicit default `onUpdate`: `{}`)", msg, on_update.as_str())
         }
         (None, None) => msg.to_string(),
     };
