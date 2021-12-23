@@ -17,6 +17,7 @@ use crate::{
 };
 use datamodel_connector::{walker_ext_traits::*, Connector, ConnectorCapability, ReferentialIntegrity};
 use itertools::Itertools;
+use parser_database::walkers::RelationFieldWalker;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     rc::Rc,
@@ -106,34 +107,36 @@ pub(super) fn field_arity(relation: InlineRelationWalker<'_, '_>, ctx: &mut Cont
 }
 
 /// The `fields` and `references` arguments should hold the same number of fields.
-pub(super) fn same_length_in_referencing_and_referenced(
-    relation: CompleteInlineRelationWalker<'_, '_>,
-    ctx: &mut Context<'_>,
-) {
-    if relation.referenced_fields().len() == 0 || relation.referencing_fields().len() == 0 {
+pub(super) fn same_length_in_referencing_and_referenced(relation: InlineRelationWalker<'_, '_>, ctx: &mut Context<'_>) {
+    let relation_field = if let Some(forward) = relation.forward_relation_field() {
+        forward
+    } else {
         return;
+    };
+
+    match (relation_field.referencing_fields(), relation_field.referenced_fields()) {
+        (Some(fields), Some(references)) if fields.len() != references.len() => {
+            ctx.push_error(DatamodelError::new_validation_error(
+                "You must specify the same number of fields in `fields` and `references`.".to_owned(),
+                relation_field.relation_attribute().unwrap().span,
+            ));
+        }
+        _ => (),
     }
-
-    if relation.referenced_fields().len() == relation.referencing_fields().len() {
-        return;
-    }
-
-    let ast_field = relation.referencing_field().ast_field();
-    let span = ast_field.span_for_attribute("relation").unwrap_or(ast_field.span);
-
-    ctx.push_error(DatamodelError::new_validation_error(
-        "You must specify the same number of fields in `fields` and `references`.".to_owned(),
-        span,
-    ));
 }
 
 /// Some connectors expect us to refer only unique fields from the foreign key.
-pub(super) fn references_unique_fields(relation: CompleteInlineRelationWalker<'_, '_>, ctx: &mut Context<'_>) {
-    if relation.referenced_fields().len() == 0 || !ctx.diagnostics.errors().is_empty() {
+pub(super) fn references_unique_fields(relation: InlineRelationWalker<'_, '_>, ctx: &mut Context<'_>) {
+    let relation_field = if let Some(rf) = relation.forward_relation_field() {
+        rf
+    } else {
         return;
-    }
+    };
 
-    if ctx.connector.supports_relations_over_non_unique_criteria() {
+    if relation_field.referenced_fields().map(|f| f.len() == 0).unwrap_or(true)
+        || !ctx.diagnostics.errors().is_empty()
+        || ctx.connector.supports_relations_over_non_unique_criteria()
+    {
         return;
     }
 
@@ -157,27 +160,40 @@ pub(super) fn references_unique_fields(relation: CompleteInlineRelationWalker<'_
             relation.referenced_model().name(),
             relation.referenced_fields().map(|f| f.name()).join(", ")
         ),
-        relation.referencing_field().ast_field().span
+        relation_field.ast_field().span
     ));
 }
 
 /// Some connectors want the fields and references in the same order.
-pub(super) fn referencing_fields_in_correct_order(
-    relation: CompleteInlineRelationWalker<'_, '_>,
-    ctx: &mut Context<'_>,
-) {
-    if relation.referenced_fields().len() == 0 || !ctx.diagnostics.errors().is_empty() {
+pub(super) fn referencing_fields_in_correct_order(relation: InlineRelationWalker<'_, '_>, ctx: &mut Context<'_>) {
+    let relation_field = if let Some(rf) = relation.forward_relation_field() {
+        rf
+    } else {
+        return;
+    };
+
+    if relation_field
+        .referenced_fields()
+        .map(|fields| fields.len() <= 1)
+        .unwrap_or(true)
+        || !ctx.diagnostics.errors().is_empty()
+    {
         return;
     }
 
-    if ctx.connector.allows_relation_fields_in_arbitrary_order() || relation.referenced_fields().len() == 1 {
+    if ctx.connector.allows_relation_fields_in_arbitrary_order() {
         return;
     }
 
     let reference_order_correct = relation.referenced_model().unique_criterias().any(|criteria| {
         let criteria_fields = criteria.fields().map(|f| f.name());
 
-        if criteria_fields.len() != relation.referenced_fields().len() {
+        if criteria_fields.len()
+            != relation_field
+                .referenced_fields()
+                .map(|fields| fields.len())
+                .unwrap_or(0)
+        {
             return false;
         }
 
@@ -195,7 +211,7 @@ pub(super) fn referencing_fields_in_correct_order(
             relation.referenced_model().name(),
             relation.referenced_fields().map(|f| f.name()).join(", ")
         ),
-        relation.referencing_field().ast_field().span
+        relation_field.ast_field().span
     ));
 }
 
@@ -215,7 +231,10 @@ pub(super) fn cycles<'ast, 'db>(relation: CompleteInlineRelationWalker<'ast, 'db
     if !ctx
         .connector
         .has_capability(ConnectorCapability::ReferenceCycleDetection)
-        || ctx.referential_integrity.is_prisma()
+        && ctx
+            .datasource
+            .map(|ds| ds.referential_integrity().uses_foreign_keys())
+            .unwrap_or(true)
     {
         return;
     }
@@ -298,15 +317,17 @@ pub(super) fn multiple_cascading_paths(relation: CompleteInlineRelationWalker<'_
         return;
     }
 
-    if !relation
-        .on_delete(ctx.connector, ctx.referential_integrity)
-        .triggers_modification()
-        && !relation.on_update().triggers_modification()
-    {
+    let triggers_modifications = |relation: &CompleteInlineRelationWalker<'_, '_>| {
+        relation
+            .on_delete(ctx.connector, ctx.referential_integrity)
+            .triggers_modification()
+            || relation.on_update().triggers_modification()
+    };
+
+    if !triggers_modifications(&relation) {
         return;
     }
 
-    let mut visited = HashSet::new();
     let parent_model = relation.referencing_model();
 
     // Gather all paths from this model to any other model, skipping
@@ -320,20 +341,21 @@ pub(super) fn multiple_cascading_paths(relation: CompleteInlineRelationWalker<'_
     let mut next_relations: Vec<_> = relation
         .referencing_model()
         .complete_inline_relations_from()
-        .filter(|relation| {
-            relation
-                .on_delete(ctx.connector, ctx.referential_integrity)
-                .triggers_modification()
-                || relation.on_update().triggers_modification()
+        .filter(triggers_modifications)
+        .map(|relation| {
+            (
+                relation,
+                Rc::new(VisitedRelation::root(relation)),
+                HashSet::<RelationFieldWalker<'_, '_>>::new(),
+            )
         })
-        .map(|relation| (relation, Rc::new(VisitedRelation::root(relation))))
         .collect();
 
-    while let Some((next_relation, visited_relations)) = next_relations.pop() {
+    while let Some((next_relation, visited_relations, mut current_path)) = next_relations.pop() {
         let model = next_relation.referencing_model();
         let related_model = next_relation.referenced_model();
 
-        visited.insert(next_relation.referencing_field());
+        current_path.insert(next_relation.referencing_field());
 
         // Self-relations are detected elsewhere.
         if model == related_model {
@@ -347,8 +369,15 @@ pub(super) fn multiple_cascading_paths(relation: CompleteInlineRelationWalker<'_
 
         let mut forward_relations = related_model
             .complete_inline_relations_from()
-            .filter(|relation| !visited.contains(&relation.referencing_field()))
-            .map(|relation| (relation, Rc::new(visited_relations.link_next(relation))))
+            .filter(triggers_modifications)
+            .filter(|relation| !current_path.contains(&relation.referencing_field()))
+            .map(|relation| {
+                (
+                    relation,
+                    Rc::new(visited_relations.link_next(relation)),
+                    current_path.clone(),
+                )
+            })
             .peekable();
 
         // If the related model does not have any paths to other models, we
@@ -356,9 +385,6 @@ pub(super) fn multiple_cascading_paths(relation: CompleteInlineRelationWalker<'_
         // inspection.
         if forward_relations.peek().is_none() {
             paths.push(visited_relations.link_next(next_relation));
-
-            // We want to re-visit the same fields if coming from another path.
-            visited.clear();
 
             continue;
         }
@@ -452,14 +478,16 @@ fn cascade_error_with_default_values(
         (Some(on_delete), Some(on_update)) => {
             format!(
                 "{} (Implicit default `onDelete`: `{}`, and `onUpdate`: `{}`)",
-                msg, on_delete, on_update
+                msg,
+                on_delete.as_str(),
+                on_update.as_str()
             )
         }
         (Some(on_delete), None) => {
-            format!("{} (Implicit default `onDelete`: `{}`)", msg, on_delete)
+            format!("{} (Implicit default `onDelete`: `{}`)", msg, on_delete.as_str())
         }
         (None, Some(on_update)) => {
-            format!("{} (Implicit default `onUpdate`: `{}`)", msg, on_update)
+            format!("{} (Implicit default `onUpdate`: `{}`)", msg, on_update.as_str())
         }
         (None, None) => msg.to_string(),
     };

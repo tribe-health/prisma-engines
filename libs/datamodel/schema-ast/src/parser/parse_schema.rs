@@ -100,7 +100,6 @@ fn rule_to_string(rule: Rule) -> &'static str {
         Rule::maybe_empty_identifier => "alphanumeric identifier",
         Rule::numeric_literal => "numeric literal",
         Rule::string_literal => "string literal",
-        Rule::boolean_literal => "boolean literal",
         Rule::constant_literal => "literal",
         Rule::array_expression => "array",
         Rule::expression => "expression",
@@ -109,6 +108,8 @@ fn rule_to_string(rule: Rule) -> &'static str {
         Rule::field_with_args => "field with arguments",
         Rule::argument_value => "argument value",
         Rule::argument => "argument",
+        Rule::named_argument => "named argument",
+        Rule::empty_argument => "empty argument",
         Rule::attribute_arguments => "attribute arguments",
         Rule::attribute_name => "attribute name",
         Rule::attribute => "attribute",
@@ -128,6 +129,7 @@ fn rule_to_string(rule: Rule) -> &'static str {
         Rule::comment_and_new_line => "comment and new line",
         Rule::comment_block => "comment block",
         Rule::number => "number",
+        Rule::trailing_comma => "trailing comma",
 
         // Those are helpers, so we get better error messages:
         Rule::BLOCK_OPEN => "Start of block (\"{\")",
@@ -160,8 +162,6 @@ fn rule_to_string(rule: Rule) -> &'static str {
         Rule::string_interpolate_escape => "string interpolation",
         Rule::string_raw => "unescaped string",
         Rule::string_content => "string contents",
-        Rule::boolean_true => "boolean true",
-        Rule::boolean_false => "boolean false",
         Rule::doc_content => "documentation comment content",
     }
 }

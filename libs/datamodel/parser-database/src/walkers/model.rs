@@ -9,12 +9,14 @@ use super::{
     ScalarFieldWalker,
 };
 use crate::{
-    ast,
-    {types::ModelAttributes, ParserDatabase},
+    ast::{self, WithName},
+    types::ModelAttributes,
+    ParserDatabase,
 };
 use std::hash::{Hash, Hasher};
 
-#[derive(Copy, Clone)]
+/// A `model` declaration in the Prisma schema.
+#[derive(Copy, Clone, Debug)]
 pub struct ModelWalker<'ast, 'db> {
     pub(super) model_id: ast::ModelId,
     pub(super) db: &'db ParserDatabase<'ast>,
@@ -94,6 +96,7 @@ impl<'ast, 'db> ModelWalker<'ast, 'db> {
             .unwrap_or_else(|| &self.db.ast[self.model_id].name.name)
     }
 
+    /// Get the database names of the constrained scalar fields.
     #[allow(clippy::unnecessary_lazy_evaluations)] // respectfully disagree
     pub fn get_field_db_names<'a>(&'a self, fields: &'a [ast::FieldId]) -> impl Iterator<Item = &'ast str> + 'a {
         fields.iter().map(move |&field_id| {

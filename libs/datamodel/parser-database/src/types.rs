@@ -1,11 +1,9 @@
 use crate::{context::Context, walkers::CompositeTypeFieldWalker, walkers::CompositeTypeWalker, DatamodelError};
-use dml::model::SortOrder;
-use schema_ast::ast;
+use schema_ast::ast::{self, WithName};
 use std::{
     collections::{BTreeMap, HashMap},
     fmt,
     rc::Rc,
-    str::FromStr,
 };
 
 pub(super) fn resolve_types(ctx: &mut Context<'_>) {
@@ -75,17 +73,24 @@ enum FieldType {
     Scalar(ScalarFieldType),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// The type of a scalar field, parsed and categorized.
+#[derive(Debug, Clone, Copy)]
 pub enum ScalarFieldType {
+    /// A composite type
     CompositeType(ast::CompositeTypeId),
+    /// An enum
     Enum(ast::EnumId),
-    BuiltInScalar(dml::scalars::ScalarType),
+    /// A Prisma scalar type
+    BuiltInScalar(ScalarType),
+    /// A type alias
     Alias(ast::AliasId),
+    /// An `Unsupported("...")` type
     Unsupported,
 }
 
 impl ScalarFieldType {
-    pub fn as_builtin_scalar(self) -> Option<dml::scalars::ScalarType> {
+    /// Try to interpret this field type as a known Prisma scalar type.
+    pub fn as_builtin_scalar(self) -> Option<ScalarType> {
         match self {
             ScalarFieldType::BuiltInScalar(s) => Some(s),
             _ => None,
@@ -94,12 +99,18 @@ impl ScalarFieldType {
 }
 
 #[derive(Debug)]
+pub(crate) struct DefaultAttribute<'ast> {
+    pub(crate) mapped_name: Option<&'ast str>,
+    pub(crate) value: &'ast ast::Expression,
+    pub(crate) default_attribute: &'ast ast::Attribute,
+}
+
+#[derive(Debug)]
 pub(crate) struct ScalarField<'ast> {
     pub(crate) r#type: ScalarFieldType,
     pub(crate) is_ignored: bool,
     pub(crate) is_updated_at: bool,
-    pub(crate) default: Option<dml::default_value::DefaultValue>,
-    pub(crate) default_attribute: Option<&'ast ast::Attribute>,
+    pub(crate) default: Option<DefaultAttribute<'ast>>,
     /// @map
     pub(crate) mapped_name: Option<&'ast str>,
     /// Native type name and arguments
@@ -113,8 +124,8 @@ pub(crate) struct ScalarField<'ast> {
 #[derive(Debug)]
 pub(crate) struct RelationField<'ast> {
     pub(crate) referenced_model: ast::ModelId,
-    pub(crate) on_delete: Option<dml::relation_info::ReferentialAction>,
-    pub(crate) on_update: Option<dml::relation_info::ReferentialAction>,
+    pub(crate) on_delete: Option<crate::ReferentialAction>,
+    pub(crate) on_update: Option<crate::ReferentialAction>,
     /// The fields _explicitly present_ in the AST.
     pub(crate) fields: Option<Vec<ast::FieldId>>,
     /// The `references` fields _explicitly present_ in the AST.
@@ -158,13 +169,22 @@ pub(crate) struct ModelAttributes<'ast> {
     pub(crate) mapped_name: Option<&'ast str>,
 }
 
+/// A type of index as defined by the `type: ...` argument on an index attribute.
+///
+/// ```ignore
+/// @@index([a, b], type: Hash)
+///                 ^^^^^^^^^^
+/// ```
 #[derive(Debug, Clone, Copy)]
 pub enum IndexAlgorithm {
+    /// Binary tree index (the default in most databases)
     BTree,
+    /// Hash index
     Hash,
 }
 
 impl IndexAlgorithm {
+    /// Is this a hash index?
     pub fn is_hash(self) -> bool {
         matches!(self, Self::Hash)
     }
@@ -176,10 +196,14 @@ impl Default for IndexAlgorithm {
     }
 }
 
+/// The different types of indexes supported in the Prisma Schema Language.
 #[derive(Debug, Clone, Copy)]
 pub enum IndexType {
+    /// @@index
     Normal,
+    /// @(@)unique
     Unique,
+    /// @(@)fulltext
     Fulltext,
 }
 
@@ -245,7 +269,6 @@ fn visit_model<'ast>(model_id: ast::ModelId, ast_model: &'ast ast::Model, ctx: &
                     is_ignored: false,
                     is_updated_at: false,
                     default: None,
-                    default_attribute: None,
                     mapped_name: None,
                     native_type: None,
                 };
@@ -497,7 +520,7 @@ fn field_type<'ast>(field: &'ast ast::Field, ctx: &mut Context<'ast>) -> Result<
         ast::FieldType::Unsupported(_, _) => return Ok(FieldType::Scalar(ScalarFieldType::Unsupported)),
     };
 
-    if let Ok(tpe) = dml::scalars::ScalarType::from_str(supported) {
+    if let Some(tpe) = ScalarType::try_from_str(supported) {
         return Ok(FieldType::Scalar(ScalarFieldType::BuiltInScalar(tpe)));
     }
 
@@ -517,5 +540,67 @@ fn field_type<'ast>(field: &'ast ast::Field, ctx: &mut Context<'ast>) -> Result<
         Some((_, ast::Top::Generator(_))) | Some((_, ast::Top::Source(_))) => unreachable!(),
         None => Err(supported),
         _ => unreachable!(),
+    }
+}
+
+/// The sort order of an index.
+#[derive(Debug, Clone, Copy)]
+pub enum SortOrder {
+    /// ASCending
+    Asc,
+    /// DESCending
+    Desc,
+}
+
+impl Default for SortOrder {
+    fn default() -> Self {
+        Self::Asc
+    }
+}
+
+/// Prisma's builtin scalar types.
+#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
+#[allow(missing_docs)]
+pub enum ScalarType {
+    Int,
+    BigInt,
+    Float,
+    Boolean,
+    String,
+    DateTime,
+    Json,
+    Bytes,
+    Decimal,
+}
+
+impl ScalarType {
+    /// The string representation of the scalar type in the schema.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ScalarType::Int => "Int",
+            ScalarType::BigInt => "BigInt",
+            ScalarType::Float => "Float",
+            ScalarType::Boolean => "Boolean",
+            ScalarType::String => "String",
+            ScalarType::DateTime => "DateTime",
+            ScalarType::Json => "Json",
+            ScalarType::Bytes => "Bytes",
+            ScalarType::Decimal => "Decimal",
+        }
+    }
+
+    pub(crate) fn try_from_str(s: &str) -> Option<ScalarType> {
+        match s {
+            "Int" => Some(ScalarType::Int),
+            "BigInt" => Some(ScalarType::BigInt),
+            "Float" => Some(ScalarType::Float),
+            "Boolean" => Some(ScalarType::Boolean),
+            "String" => Some(ScalarType::String),
+            "DateTime" => Some(ScalarType::DateTime),
+            "Json" => Some(ScalarType::Json),
+            "Bytes" => Some(ScalarType::Bytes),
+            "Decimal" => Some(ScalarType::Decimal),
+            _ => None,
+        }
     }
 }
